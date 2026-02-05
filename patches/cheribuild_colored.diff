@@ -1,0 +1,26 @@
+diff --git a/pycheribuild/projects/cross/benchmarks.py b/pycheribuild/projects/cross/benchmarks.py
+index cd2fadb1..52b587ab 100644
+--- a/pycheribuild/projects/cross/benchmarks.py
++++ b/pycheribuild/projects/cross/benchmarks.py
+@@ -349,7 +349,7 @@ class BuildSpec2006New(_BuildLLVMTestSuiteSubdir):
+             "iso-path", altname="spec-sources", help="Path to the SPEC2006 ISO image or extracted sources"
+         )
+         cls.fast_benchmarks_only = cls.add_bool_option("fast-benchmarks-only", default=False)
+-        cls.workload = cls.add_config_option("workload", choices=("test", "train", "ref"), default="test")
++        cls.workload = cls.add_config_option("workload", choices=("test", "train", "ref"), default="train")
+         cls.benchmark_override = cls.add_list_option("benchmarks", help="override the list of benchmarks to run")
+ 
+     @property
+diff --git a/pycheribuild/projects/disk_image.py b/pycheribuild/projects/disk_image.py
+index 8a2c21a8..f2bb4453 100644
+--- a/pycheribuild/projects/disk_image.py
++++ b/pycheribuild/projects/disk_image.py
+@@ -1108,7 +1108,7 @@ class BuildMinimalCheriBSDDiskImage(BuildDiskImageBase):
+             "strip", default=True, help="strip ELF files to reduce size of generated image"
+         )
+         cls.include_cheribsdtest = cls.add_bool_option(
+-            "include-cheribsdtest", default=True, help="Also add static cheribsdtest base variants to the disk image"
++            "include-cheribsdtest", default=False, help="Also add static cheribsdtest base variants to the disk image"
+         )
+         cls.include_pmc = cls.add_bool_option(
+             "include-pmc", default=True, help="Include PMC tools and kernel modules in the disk image"

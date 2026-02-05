@@ -1,0 +1,79 @@
+diff --git a/lib/libc/stdlib/malloc/mrs/mrs.c b/lib/libc/stdlib/malloc/mrs/mrs.c
+index cf1f129248..e4b3d4c4f8 100644
+--- a/lib/libc/stdlib/malloc/mrs/mrs.c
++++ b/lib/libc/stdlib/malloc/mrs/mrs.c
+@@ -319,6 +319,9 @@ static bool bound_pointers = false;
+ static bool abort_on_validation_failure = true;
+ static bool mrs_initialized = false;
+ 
++static int revoke_count = 0;
++static int malloc_count = 0;
++
+ static unsigned int quarantine_denominator = QUARANTINE_DENOMINATOR;
+ static unsigned int quarantine_numerator = QUARANTINE_NUMERATOR;
+ 
+@@ -822,6 +825,7 @@ app_quarantine_revoke_async(void)
+ 
+ 		curr->epoch = cri->epochs.enqueue;
+ 		curr->revoking = true;
++		revoke_count++;
+ 		TAILQ_INSERT_TAIL(&app_quarantine_revoke_list, curr, next);
+ 	}
+ 	assert(!TAILQ_EMPTY(&app_quarantine_revoke_list));
+@@ -1468,6 +1472,15 @@ mrs_constructor(void)
+ 	mrs_init();
+ }
+ 
++__attribute__((destructor))
++static void mrs_destructor(void)
++{
++	if(getenv("CC_DEBUG")!=NULL){
++		mrs_printf("revoke counter: %d\n", revoke_count);
++		mrs_printf("alloc counter: %d\n", malloc_count);
++	}
++}
++
+ #ifdef PRINT_STATS
+ __attribute__((destructor))
+ static void
+@@ -1497,7 +1510,7 @@ static void *
+ mrs_malloc(size_t size)
+ {
+ 	mrs_init();
+-
++	
+ 	if (!quarantining)
+ 		return (mrs_real_malloc(size));
+ 
+@@ -1536,6 +1549,7 @@ mrs_malloc(size_t size)
+ 	    size, allocated_region);*/
+ 
+ 	MRS_UTRACE(UTRACE_MRS_MALLOC, NULL, size, 0, allocated_region);
++	malloc_count++;
+ 	return (allocated_region);
+ }
+ 
+@@ -1594,6 +1608,7 @@ mrs_calloc(size_t number, size_t size)
+ 	/*mrs_debug_printf("mrs_calloc: exit called %d size 0x%zx address %p\n", number, size, allocated_region);*/
+ 
+ 	MRS_UTRACE(UTRACE_MRS_CALLOC, NULL, size, number, allocated_region);
++	malloc_count++;
+ 	return (allocated_region);
+ }
+ 
+@@ -1636,6 +1651,7 @@ mrs_posix_memalign(void **ptr, size_t alignment, size_t size)
+ 	increment_allocated_size(*ptr);
+ 
+ 	MRS_UTRACE(UTRACE_MRS_POSIX_MEMALIGN, NULL, size, alignment, *ptr);
++	malloc_count++;
+ 	return (ret);
+ }
+ 
+@@ -1676,6 +1692,7 @@ mrs_aligned_alloc(size_t alignment, size_t size)
+ 
+ 	MRS_UTRACE(UTRACE_MRS_ALIGNED_ALLOC, NULL, size, alignment,
+ 	    allocated_region);
++	malloc_count++;
+ 	return (allocated_region);
+ }
+ 

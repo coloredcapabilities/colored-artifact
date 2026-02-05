@@ -1,0 +1,495 @@
+diff --git a/disas/riscv.c b/disas/riscv.c
+index a497f3277b..d02df0405c 100644
+--- a/disas/riscv.c
++++ b/disas/riscv.c
+@@ -526,6 +526,7 @@ typedef enum {
+     rv_op_cseal,
+     rv_op_cunseal,
+     rv_op_candperm,
++    rv_op_ccsettype,
+     rv_op_csetflags,
+     rv_op_csetoffset,
+     rv_op_csetaddr,
+@@ -1259,6 +1260,7 @@ const rv_opcode_data opcode_data[] = {
+     [rv_op_cseal] = { "cseal", rv_codec_r, rv_fmt_cd_cs1_cs2, NULL, 0, 0, 0 },
+     [rv_op_cunseal] = { "cunseal", rv_codec_r, rv_fmt_cd_cs1_cs2, NULL, 0, 0, 0 },
+     [rv_op_candperm] = { "candperm", rv_codec_r, rv_fmt_cd_cs1_rs2, NULL, 0, 0, 0 },
++    [rv_op_ccsettype] = { "ccsettype", rv_codec_r, rv_fmt_cd_cs1_rs2, NULL, 0, 0, 0 },
+     [rv_op_csetflags] = { "csetflags", rv_codec_r, rv_fmt_cd_cs1_rs2, NULL, 0, 0, 0 },
+     [rv_op_csetoffset] = { "csetoffset", rv_codec_r, rv_fmt_cd_cs1_rs2, NULL, 0, 0, 0 },
+     [rv_op_csetaddr] = { "csetaddr", rv_codec_r, rv_fmt_cd_cs1_rs2, NULL, 0, 0, 0 },
+@@ -1474,7 +1476,8 @@ static const char *csr_name(int csrno)
+     case 0x0d81: return "stimeh";
+     case 0x0d82: return "sinstreth";
+     case 0x0e00: return "hcycle";
+-    case 0x07c0: return "ccp";
++    case 0x0012: return "ccp";
++    case 0x0013: return "ccpt";
+     case 0x0e01: return "htime";
+     case 0x0e02: return "hinstret";
+     case 0x0e80: return "hcycleh";
+@@ -1529,7 +1532,8 @@ static rv_opcode decode_cheri_inst(rv_inst inst) {
+     // 0001010 unused
+     CHERI_THREEOP_CASE(cseal,       0001011,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(cunseal,     0001100,  ..... ..... 000 ..... 1011011 @r)
+-    CHERI_THREEOP_CASE(candperm,    0001101,  ..... ..... 000 ..... 1011011 @r)
++    CHERI_THREEOP_CASE(candperm,    0001101,  ..... ..... 000 ..... 1011011 @r) 
++    
+     CHERI_THREEOP_CASE(csetflags,   0001110,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(csetoffset,  0001111,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(csetaddr,    0010000,  ..... ..... 000 ..... 1011011 @r)
+@@ -1538,12 +1542,14 @@ static rv_opcode decode_cheri_inst(rv_inst inst) {
+     CHERI_THREEOP_CASE(cfromptr,    0010011,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(csub,        0010100,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(csethigh,    0010110,  ..... ..... 000 ..... 1011011 @r)
++    CHERI_THREEOP_CASE(ccsettype,    0010101,  ..... ..... 000 ..... 1011011 @r)
+     // 0010101-0011100 unused
+     CHERI_THREEOP_CASE(cbuildcap,   0011101,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(ccopytype,   0011110,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(ccseal,      0011111,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(ctestsubset, 0100000,  ..... ..... 000 ..... 1011011 @r)
+     CHERI_THREEOP_CASE(cseqx,       0100001,  ..... ..... 000 ..... 1011011 @r)
++
+     // 1111011 unused
+     // TODO: 1111100 Used for Stores (see below)
+     // TODO: 1111101 Used for Loads (see below)
+diff --git a/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_128.h b/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_128.h
+index d0498cd35f..42a6a125aa 100644
+--- a/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_128.h
++++ b/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_128.h
+@@ -68,11 +68,13 @@ typedef int64_t cc128_saddr_t;
+ #pragma GCC diagnostic push
+ #pragma GCC diagnostic ignored "-Wpedantic"
+ enum {
+-    _CC_FIELD(UPERMS, 127, 124),
+-    _CC_FIELD(HWPERMS, 123, 112),
+-    _CC_FIELD(RESERVED, 111, 110),
+-    _CC_FIELD(FLAGS, 109, 109),
+-    _CC_FIELD(OTYPE, 108, 91),
++    _CC_FIELD(UPERMS, 127, 126), //2 bits 
++    _CC_FIELD(HWPERMS, 125, 114), //12 bits
++    _CC_FIELD(RESERVED, 113, 113),
++    _CC_FIELD(FLAGS, 112, 112),
++    _CC_FIELD(OTYPE, 111, 91), //21 bits 
++    //_CC_FIELD(RESERVED, 92, 92),
++    //_CC_FIELD(FLAGS, 91, 91),
+     _CC_FIELD(EBT, 90, 64),
+ 
+     _CC_FIELD(INTERNAL_EXPONENT, 90, 90),
+@@ -115,15 +117,15 @@ _CC_STATIC_ASSERT(CC128_HIGHEST_PERM < CC128_FIELD_HWPERMS_MAX_VALUE, "permissio
+ _CC_STATIC_ASSERT((CC128_HIGHEST_PERM << 1) > CC128_FIELD_HWPERMS_MAX_VALUE, "all permission bits should be used");
+ 
+ #define CC128_PERMS_ALL (0xfff) /* [0...11] */
+-#define CC128_UPERMS_ALL (0xf)  /* [15...18] */
++#define CC128_UPERMS_ALL (0x3)  /* [15...16] */
+ #define CC128_UPERMS_SHFT (15)
+ #define CC128_UPERMS_MEM_SHFT (12)
+-#define CC128_MAX_UPERM (3)
++#define CC128_MAX_UPERM (0x3)
+ 
+ // We reserve 16 otypes
+ enum _CC_N(OTypes) {
+     CC128_FIRST_NONRESERVED_OTYPE = 0,
+-    CC128_MAX_REPRESENTABLE_OTYPE = ((1u << CC128_OTYPE_BITS) - 1u),
++    CC128_MAX_REPRESENTABLE_OTYPE = ((1u << 21) - 1u),
+     _CC_SPECIAL_OTYPE(OTYPE_UNSEALED, 0),
+     _CC_SPECIAL_OTYPE(OTYPE_SENTRY, 1),
+     _CC_SPECIAL_OTYPE(OTYPE_INDIRECT_PAIR, 2),
+@@ -149,7 +151,7 @@ _CC_STATIC_ASSERT_SAME(CC128_MANTISSA_WIDTH, CC128_FIELD_EXP_ZERO_BOTTOM_SIZE);
+ #include "cheri_compressed_cap_common.h"
+ 
+ // Sanity-check mask is the expected NULL encoding
+-_CC_STATIC_ASSERT_SAME(CC128_NULL_XOR_MASK, UINT64_C(0x00001ffffc018004));
++//_CC_STATIC_ASSERT_SAME(CC128_NULL_XOR_MASK, UINT64_C(0x00001ffffc018004));
+ 
+ __attribute__((deprecated("Use cc128_compress_raw"))) static inline uint64_t
+ compress_128cap_without_xor(const cc128_cap_t* csp) {
+diff --git a/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_common.h b/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_common.h
+index eb70e29e32..e2b3336cd0 100644
+--- a/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_common.h
++++ b/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_common.h
+@@ -765,9 +765,10 @@ static bool _cc_N(fast_is_representable_new_addr)(const _cc_cap_t* cap, _cc_addr
+ /* @return whether the operation was able to set precise bounds precise or not */
+ static inline bool _cc_N(setbounds_impl)(_cc_cap_t* cap, _cc_length_t req_len, _cc_addr_t* alignment_mask) {
+     uint64_t req_base = cap->_cr_cursor;
+-    if (_cc_N(is_cap_sealed)(cap)) {
+-        cap->cr_tag = 0; // Detag sealed inputs to maintain invariants
+-    }
++    //if (_cc_N(is_cap_sealed)(cap)) {
++    //    cap->cr_tag = 0; // Detag sealed inputs to maintain invariants
++    //}
+ #ifdef CC_IS_MORELLO
+     if (!cap->cr_bounds_valid) {
+         cap->cr_tag = 0;
+diff --git a/target/cheri-common/cheri-helper-common.h b/target/cheri-common/cheri-helper-common.h
+index 15ed607230..a8aaee0a03 100644
+--- a/target/cheri-common/cheri-helper-common.h
++++ b/target/cheri-common/cheri-helper-common.h
+@@ -95,6 +95,7 @@ DEF_HELPER_4(cunseal, void, env, i32, i32, i32)
+ // Three operands (cap cap int)
+ DEF_HELPER_4(candaddr, void, env, i32, i32, tl)
+ DEF_HELPER_4(candperm, void, env, i32, i32, tl)
++DEF_HELPER_4(ccsettype, void, env, i32, i32, tl)
+ DEF_HELPER_4(cfromptr, void, env, i32, i32, tl)
+ DEF_HELPER_4(cincoffset, void, env, i32, i32, tl)
+ 
+diff --git a/target/cheri-common/cheri-helper-utils.h b/target/cheri-common/cheri-helper-utils.h
+index 836ee8b97d..46180b7c93 100644
+--- a/target/cheri-common/cheri-helper-utils.h
++++ b/target/cheri-common/cheri-helper-utils.h
+@@ -41,7 +41,7 @@
+ #include "cheri-bounds-stats.h"
+ #include "tcg/tcg.h"
+ #include "tcg/tcg-op.h"
+-#include "exec/exec-all.h"
++#include "exec/cpu_ldst.h"
+ 
+ static inline void derive_cap_from_pcc(CPUArchState *env, uint32_t cd,
+                                        target_ulong new_addr, uintptr_t retpc,
+@@ -317,9 +317,16 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
+     if (!cbp->cr_tag) {
+         raise_cheri_exception_addr_wnr(env, CapEx_TagViolation, cb, addr,
+                                        !is_load);
++#if defined(TARGET_AARCH64) || defined(TARGET_MIPS)
+     } else if (!cap_is_unsealed(cbp)) {
++      raise_cheri_exception_addr_wnr(env, CapEx_SealViolation, cb, addr,
++                                    !is_load);
++#else
++    //hwaddr phys_ccp = riscv_cpu_get_phys_page_debug(env_cpu(env), env->ccp);
++    } else if (!cap_is_unsealed_with_ccp(env, cbp)) {
+         raise_cheri_exception_addr_wnr(env, CapEx_SealViolation, cb, addr,
+                                        !is_load);
++#endif
+     } else if (MISSING_REQUIRED_PERM(CAP_PERM_LOAD)) {
+         raise_cheri_exception_addr_wnr(env, CapEx_PermitLoadViolation, cb, addr,
+                                        false);
+@@ -339,7 +346,6 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
+         }
+     }
+ #undef MISSING_REQUIRED_PERM
+-
+     if (!in_bounds) {
+         qemu_log_instr_or_mask_msg(
+             env, CPU_LOG_INT,
+@@ -347,7 +353,7 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
+             " base=" TARGET_FMT_lx " top=" TARGET_FMT_lx "\n",
+             addr, cap_get_base(cbp), cap_get_top(cbp));
+         raise_cheri_exception_addr_wnr(env, CapEx_LengthViolation, cb, addr,
+-                                       !is_load);
++                                      !is_load);
+     } else if (alignment_required &&
+                !QEMU_IS_ALIGNED_P2(addr, alignment_required)) {
+         if (unaligned_handler) {
+diff --git a/target/cheri-common/cheri_defs.h b/target/cheri-common/cheri_defs.h
+index 5023acc9f3..174206b4e2 100644
+--- a/target/cheri-common/cheri_defs.h
++++ b/target/cheri-common/cheri_defs.h
+@@ -32,6 +32,7 @@
+  */
+ #pragma once
+ 
++
+ #if defined CONFIG_DEBUG_TCG || defined QEMU_STATIC_ANALYSIS
+ # define cheri_debug_assert(X) do { assert(X); } while (0)
+ #else
+diff --git a/target/cheri-common/cheri_utils.h b/target/cheri-common/cheri_utils.h
+index 25136ed789..55d0914323 100644
+--- a/target/cheri-common/cheri_utils.h
++++ b/target/cheri-common/cheri_utils.h
+@@ -34,7 +34,7 @@
+ #include "qemu/compiler.h"
+ #include "qemu/osdep.h"
+ #include "qemu/error-report.h"
+-
++#include "exec/cpu_ldst.h"
+ #include "cheri_defs.h"
+ 
+ #ifdef TARGET_AARCH64
+@@ -168,9 +168,12 @@ static inline target_long cap_get_otype_signext(const cap_register_t *c)
+      * We "sign" extend to a 64-bit number by subtracting the maximum:
+      * e.g. for 64-bit CHERI-RISC-V unsigned 2^18-1 maps to 2^64-1
+      */
+-    return result < CAP_CC(MIN_RESERVED_OTYPE)
+-               ? result
+-               : result - CAP_MAX_REPRESENTABLE_OTYPE - 1;
++     const target_ulong max = CAP_MAX_REPRESENTABLE_OTYPE;
++     if (result == max || result == max - 1 || result == max - 2 || result == max - 3) {
++         return result - max - 1;
++     } else {
++         return result;
++     }
+ #endif
+ }
+ 
+@@ -252,6 +255,39 @@ static inline bool cap_is_unsealed(const cap_register_t *c)
+     return otype == CAP_OTYPE_UNSEALED;
+ }
+ 
++uintptr_t GETPC_wrapper(void);
++bool cap_is_unsealed_with_ccp(CPUArchState *env, const cap_register_t *c);
++// static inline bool cap_is_unsealed_with_ccp(CPUArchState *env, const cap_register_t *c)
++// {
++// #if defined(TARGET_RISCV)
++//     target_ulong ccp = env->ccp;
++//     target_ulong otype = cap_get_otype_unsigned(c);
++//     if (otype == CAP_OTYPE_UNSEALED)
++//        return true; 
++       
++//     if(cap_otype_is_reserved(otype)){
++//         return false;
++//     }
++//     printf("cap: %p\n", c);
++//     uint64_t word_index = otype / 64;
++//     uint64_t bit_offset = otype % 64;
++
++//      // Calculate the address of the bitmap word
++//     target_ulong word_addr = ccp + word_index * sizeof(target_ulong);
++//     void *host = probe_read(env, word_addr, sizeof(uint64_t), cpu_mmu_index(env, true), GETPC_wrapper());
++//     uint64_t word;
++//     if (likely(host)) {
++//         word = ldq_p((char *)host);
++//     } else {
++//         word = cpu_ld_cap_word_ra(env, word_addr, GETPC_wrapper());
++//     }
++//     return !((word >> bit_offset) & 1);
++// #else
++//     return cap_is_unsealed(c);
++// #endif
++// }
++
++
+ static inline void cap_set_sealed(cap_register_t *c, uint32_t type)
+ {
+     assert(c->cr_tag);
+diff --git a/target/cheri-common/op_helper_cheri_common.c b/target/cheri-common/op_helper_cheri_common.c
+index 211efc40de..e94e2a6938 100644
+--- a/target/cheri-common/op_helper_cheri_common.c
++++ b/target/cheri-common/op_helper_cheri_common.c
+@@ -113,10 +113,11 @@ try_set_cap_cursor(CPUArchState *env, const cap_register_t *cptr,
+     oob_info->num_uses++;
+ #endif
+ 
+-    if (unlikely(cptr->cr_tag && is_cap_sealed(cptr))) {
++    if (unlikely(cptr->cr_tag && !cap_is_unsealed_with_ccp(env, cptr))) {
+         raise_cheri_exception_or_invalidate_impl(env, CapEx_SealViolation,
+                                                  regnum_src, retpc);
+     }
++
+ #ifndef TARGET_MORELLO
+     /*
+      * For Morello we can't just check for in-bounds since changing the sign
+@@ -291,7 +292,6 @@ target_ulong CHERI_HELPER_IMPL(cgetperm(CPUArchState *env, uint32_t cb))
+     cheri_debug_assert((cap_get_uperms(cbp) & CAP_UPERMS_ALL) ==
+                            cap_get_uperms(cbp) &&
+                        "Unknown SW perms bits set!");
+-
+     return COMBINED_PERMS_VALUE(cbp);
+ }
+ 
+@@ -326,7 +326,9 @@ target_ulong CHERI_HELPER_IMPL(cgettype(CPUArchState *env, uint32_t cb))
+      * CGetType: Move Object Type Field to a General-Purpose Register.
+      */
+     const cap_register_t *cbp = get_readonly_capreg(env, cb);
+-    const target_long otype = cap_get_otype_signext(cbp);
++    target_long otype = cap_get_otype_signext(cbp);
++    //const target_long uperm = cap_get_uperms(cbp) & 0x7;
++
+ #ifdef TARGET_MORELLO
+     cheri_debug_assert(otype == cap_get_otype_unsigned(cbp));
+ #else
+@@ -965,6 +967,26 @@ void CHERI_HELPER_IMPL(candperm(CPUArchState *env, uint32_t cd, uint32_t cb,
+     update_capreg(env, cd, &result);
+ }
+ 
++void CHERI_HELPER_IMPL(ccsettype(CPUArchState *env, uint32_t cd, uint32_t cb,
++  target_ulong rt))
++{
++    GET_HOST_RETPC_IF_TRAPPING_CHERI_ARCH();
++    DEFINE_RESULT_VALID;
++    const cap_register_t *cbp = get_readonly_capreg(env, cb);
++    /*
++    * CAndPerm: Restrict Permissions
++    */
++    if (!cbp->cr_tag) {
++      raise_cheri_exception_or_invalidate(env, CapEx_TagViolation, cb);
++    }
++
++    
++    cap_register_t result = *cbp;
++    CAP_cc(update_otype)(&result, rt);
++    update_capreg(env, cd, &result);
++}
++
++
+ void CHERI_HELPER_IMPL(cincoffset(CPUArchState *env, uint32_t cd, uint32_t cb,
+                                   target_ulong rt))
+ {
+@@ -1383,6 +1405,38 @@ void squash_mutable_permissions(CPUArchState *env, target_ulong *pesbt,
+ #endif
+ }
+ 
++uintptr_t GETPC_wrapper(void);
++bool cap_is_unsealed_with_ccp(CPUArchState *env, const cap_register_t *c)
++{
++#if defined(TARGET_RISCV)
++    target_ulong ccp = env->ccp;
++    target_ulong otype = cap_get_otype_unsigned(c);
++    if (otype == CAP_OTYPE_UNSEALED)
++       return true; 
++       
++    if(cap_otype_is_reserved(otype)){
++        return false;
++    }
++    //printf("cap: %p\n", c);
++    uint64_t word_index = otype / 64;
++    uint64_t bit_offset = otype % 64;
++    int mmu_idx = cpu_mmu_index(env, true);
++    uint64_t word;
++     // Calculate the address of the bitmap word
++    target_ulong word_addr = ccp + word_index * sizeof(target_ulong);
++    void *host = probe_read(env, word_addr, sizeof(uint64_t),  0, GETPC_wrapper());
++     if (likely(host)) {
++         word = ldq_p((char *)host);
++     } else {
++        word = cpu_ld_cap_word_ra(env, word_addr, GETPC_wrapper());
++     }
++
++    return !((word >> bit_offset) & 1);
++#else
++    return cap_is_unsealed(c);
++#endif
++}
++
+ bool load_cap_from_memory_raw_tag_mmu_idx(
+     CPUArchState *env, target_ulong *pesbt, target_ulong *cursor, uint32_t cb,
+     const cap_register_t *source, target_ulong vaddr, uintptr_t retpc,
+@@ -1745,3 +1799,7 @@ void helper_capreg_state_debug(CPUArchState *env, uint32_t regnum,
+     // Should include the actual state
+     assert((flags & (1 << (uint64_t)regstate)) && pc);
+ }
++
++uintptr_t GETPC_wrapper(void){
++    return GETPC();
++}
+diff --git a/target/riscv/cpu.c b/target/riscv/cpu.c
+index 1c77126c22..76ad4d1633 100644
+--- a/target/riscv/cpu.c
++++ b/target/riscv/cpu.c
+@@ -727,6 +727,7 @@ static void riscv_cpu_reset(DeviceState *dev)
+     env->mepc = 0;
+     env->sepc = 0;
+     env->ccp = 0;
++    env->ccpt = 0;
+ #else
+     if (!cpu->cfg.ext_cheri) {
+         error_report("CHERI extension can't be disabled yet!");
+diff --git a/target/riscv/cpu.h b/target/riscv/cpu.h
+index 450674b942..e62054a5bd 100644
+--- a/target/riscv/cpu.h
++++ b/target/riscv/cpu.h
+@@ -154,6 +154,8 @@ struct CPURISCVState {
+ 
+     target_ulong frm;
+     target_ulong ccp;
++    target_ulong ccpt;
++    int counter;
+     target_ulong badaddr;
+     target_ulong guest_phys_fault_addr;
+ #ifdef TARGET_CHERI
+diff --git a/target/riscv/cpu_bits.h b/target/riscv/cpu_bits.h
+index 923c85af63..b97bc80d71 100644
+--- a/target/riscv/cpu_bits.h
++++ b/target/riscv/cpu_bits.h
+@@ -366,7 +366,8 @@
+ #define CSR_UCCSR           0x8C0
+ #define CSR_SCCSR           0x9C0
+ #define CSR_MCCSR           0xBC0
+-#define CSR_CCP             0x7C0
++#define CSR_CCP             0x012
++#define CSR_CCPT             0x013
+ 
+ /* See Capability Control and Status Registers (CCSRs) in CHERI ISA spec. */
+ #define XCCSR_ENABLE        0x1 /* Capability extensions enabled */
+diff --git a/target/riscv/cpu_helper.c b/target/riscv/cpu_helper.c
+index 0452e294dd..e80f799ce0 100644
+--- a/target/riscv/cpu_helper.c
++++ b/target/riscv/cpu_helper.c
+@@ -1146,7 +1146,6 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+                 /* PMP has no CHERI permissions; preserve trap/clear */
+                 prot &= prot_pmp | prot_lc_preserve | prot_sc_preserve;
+             }
+-
+             if (ret != TRANSLATE_SUCCESS) {
+                 /*
+                  * Guest physical address translation failed, this is a HS
+@@ -1163,7 +1162,6 @@ bool riscv_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+         ret = get_physical_address(env, &pa, &prot, address, NULL,
+                                    access_type, mmu_idx, true, false);
+         ret = rvfi_dii_check_addr(env, ret, &pa, address, size, &prot, access_type);
+-
+         qemu_log_mask(CPU_LOG_MMU,
+                       "%s address=%" VADDR_PRIx " ret %d physical "
+                       TARGET_FMT_plx " prot %d\n",
+diff --git a/target/riscv/csr.c b/target/riscv/csr.c
+index f21ff9fbed..b3efd0c108 100644
+--- a/target/riscv/csr.c
++++ b/target/riscv/csr.c
+@@ -775,6 +775,19 @@ static int write_ccp(CPURISCVState *env, int csrno, target_ulong val)
+ }
+ 
+ 
++/* csr_ccp read and write */
++static int read_ccpt(CPURISCVState *env, int csrno, target_ulong *val)
++{
++  *val = env->ccpt;
++  return 0;
++}
++
++static int write_ccpt(CPURISCVState *env, int csrno, target_ulong val)
++{
++  env->ccpt = val;
++  return 0;
++}
++
+ static int read_mbadaddr(CPURISCVState *env, int csrno, target_ulong *val)
+ {
+     *val = env->mbadaddr;
+@@ -1729,6 +1742,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
+     [CSR_SCCSR] =               CSR_OP_FN_RW(smode, read_ccsr, write_ccsr, "sccsr"),
+     [CSR_MCCSR] =               CSR_OP_FN_RW(any, read_ccsr, write_ccsr, "mccsr"),
+     [CSR_CCP] =                 CSR_OP_RW(any, ccp),
++    [CSR_CCPT] =                 CSR_OP_RW(any, ccpt),
+ #endif
+ 
+     /* Physical Memory Protection */
+diff --git a/target/riscv/insn32-cheri.decode b/target/riscv/insn32-cheri.decode
+index ffa8e43a93..f33113f45e 100644
+--- a/target/riscv/insn32-cheri.decode
++++ b/target/riscv/insn32-cheri.decode
+@@ -52,12 +52,14 @@ ctoptr      0010010  ..... ..... 000 ..... 1011011 @r
+ cfromptr    0010011  ..... ..... 000 ..... 1011011 @r
+ csub        0010100  ..... ..... 000 ..... 1011011 @r
+ csethigh    0010110  ..... ..... 000 ..... 1011011 @r
++ccsettype   0010101  ..... ..... 000 ..... 1011011 @r
+ # 0010101-0011100 unused
+ cbuildcap   0011101  ..... ..... 000 ..... 1011011 @r
+ ccopytype   0011110  ..... ..... 000 ..... 1011011 @r
+ ccseal      0011111  ..... ..... 000 ..... 1011011 @r
+ ctestsubset 0100000  ..... ..... 000 ..... 1011011 @r
+ cseqx       0100001  ..... ..... 000 ..... 1011011 @r
++
+ # 1111011 unused
+ # 1111100 Used for Stores (see below)
+ # 1111101 Used for Loads (see below)
+diff --git a/target/riscv/insn_trans/trans_cheri.c.inc b/target/riscv/insn_trans/trans_cheri.c.inc
+index 955fe6d0c0..034493bdae 100644
+--- a/target/riscv/insn_trans/trans_cheri.c.inc
++++ b/target/riscv/insn_trans/trans_cheri.c.inc
+@@ -235,6 +235,7 @@ static bool trans_cspecialrw(DisasContext *ctx, arg_cspecialrw *a)
+ 
+ // Three operand (cap cap int)
+ TRANSLATE_CAP_CAP_INT(candperm)
++TRANSLATE_CAP_CAP_INT(ccsettype)
+ TRANSLATE_CAP_CAP_INT(cfromptr)
+ TRANSLATE_CAP_CAP_INT(cincoffset)
+ TRANSLATE_CAP_CAP_INT(csetaddr)

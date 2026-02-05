@@ -1,0 +1,92 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index af4512e1c..10610199f 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,5 +1,25 @@
+ cmake_minimum_required(VERSION 3.6)
+ 
++# If this is the wrong path, set it to wherever you have your SDK
++set(CHERI_SDK_PATH $ENV{HOME}/cheri/output/sdk)
++
++set(CMAKE_C_COMPILER ${CHERI_SDK_PATH}/bin/clang)
++set(CMAKE_CXX_COMPILER ${CHERI_SDK_PATH}/bin/clang++)
++
++set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
++set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
++set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
++set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
++
++set(CMAKE_C_COMPILER_WORKS 1)
++set(CMAKE_CXX_COMPILER_WORKS 1)
++
++set(CHERI_COMMON_FLAGS "-O0 -target riscv64-unknown-freebsd -march=rv64gcxcheri -mabi=l64pc128d -mno-relax --sysroot=${CHERI_SDK_PATH}/sysroot-riscv64-purecap")
++set(CMAKE_C_FLAGS "${CHERI_COMMON_FLAGS}")
++set(CMAKE_CXX_FLAGS "${CHERI_COMMON_FLAGS}")
++
++add_link_options(-fuse-ld=lld)
++
+ # grab CWE name from the directory we're in
+ get_filename_component(CWE_FOLDER "${CMAKE_SOURCE_DIR}" NAME)
+ string(REGEX MATCH "^CWE[0-9]+" CWE_NAME "${CWE_FOLDER}")
+@@ -10,8 +30,6 @@ project("juliet-c-${CWE_NAME}")
+ set(CMAKE_C_FLAGS_RELWITHDEBINFO "-g")
+ set(CMAKE_C_FLAGS_RELEASE "-g")
+ set(CMAKE_C_FLAGS_MINSIZEREL "-g")
+-add_compile_options(-O0)  # hopefully adding -O0 here should turn off test optimizations
+-
+ 
+ option(PLACE_OUTPUT_IN_TOPLEVEL_DIR "Use TOPLEVEL_DIR/bin as the output for all test binaries" ON)
+ set(TOPLEVEL_DIR "${CMAKE_SOURCE_DIR}/../..")
+@@ -32,6 +50,7 @@ endif()
+ 
+ set(SUPPORT_DIR "${TOPLEVEL_DIR}/testcasesupport")
+ add_library(support STATIC "${SUPPORT_DIR}/io.c" "${SUPPORT_DIR}/std_thread.c")
++target_compile_options(support PRIVATE ${COMMON_COMPILE_OPTIONS})
+ include_directories("${SUPPORT_DIR}")
+ link_libraries(support pthread m)
+ add_definitions(-DINCLUDEMAIN)
+@@ -98,7 +117,7 @@ foreach(SOURCE_FILE ${SOURCE_FILES})
+     else(NOT ${CLASS_TEST} EQUAL "-1")
+ 
+       # collect all source files corresponding to this test - recursive glob here too expensive
+-      set(EXECUTABLE_SOURCES ${SOURCE_FILES})
++      set(EXECUTABLE_SOURCES ${SOURCE_FILES} )
+       list(FILTER EXECUTABLE_SOURCES INCLUDE REGEX "^${SOURCE_DIRECTORY}/${EXECUTABLE_NAME}")
+ 
+       # add good executable
+diff --git a/juliet.py b/juliet.py
+index b4a26e84a..847f0ab3b 100755
+--- a/juliet.py
++++ b/juliet.py
+@@ -32,9 +32,9 @@ def generate(path, output_dir, keep_going):
+ 
+ def make(path, keep_going):
+     if keep_going:
+-        subprocess.Popen(["make", "-j16", "-k"], cwd=path).wait()
++        subprocess.Popen(["make", "-j64", "-k"], cwd=path).wait()
+     else:
+-        retcode = subprocess.Popen(["make", "-j16"], cwd=path).wait()
++        retcode = subprocess.Popen(["make", "-j64"], cwd=path).wait()
+         if retcode != 0:
+             juliet_print("error making " + path + " - stopping")
+             exit()
+@@ -89,3 +89,4 @@ if __name__ == "__main__":
+                 if args.run:
+                     juliet_print("running " + path)
+                     run(parsed_CWE, args.output_dir, str(args.run_timeout) + "s")
++                    
+\ No newline at end of file
+diff --git a/testcasesupport/io.c b/testcasesupport/io.c
+index 516f34c7d..9464309a0 100644
+--- a/testcasesupport/io.c
++++ b/testcasesupport/io.c
+@@ -157,7 +157,8 @@ int globalReturnsFalse()
+ 
+ int globalReturnsTrueOrFalse() 
+ {
+-    return (rand() % 2);
++    volatile int res = 1;
++    return res;
+ }
+ 
+ /* The variables below are declared "const", so a tool should

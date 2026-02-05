@@ -1,0 +1,5934 @@
+diff --git a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
+index b3c9a3cc64b2..7ac57ccfaff1 100644
+--- a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
++++ b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
+@@ -50,10 +50,12 @@ unbound_ptr(tsdn_t *tsdn, void *ptr) {
+ 		    "non-zero offset\n");
+ 		abort();
+ 	}
++	/*
+ 	if (unlikely(cheri_getsealed(ptr))) {
+ 		malloc_write("<jemalloc>: refusing to unbound sealed cap\n");
+ 		abort();
+ 	}
++	*/
+ 
+ 	rtree_ctx = tsdn_rtree_ctx(tsdn, &rtree_ctx_fallback);
+ 	extent = rtree_extent_read(tsdn, &extents_rtree,
+diff --git a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
+index eb860df02b6c..dc5ddd8acc48 100644
+--- a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
++++ b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
+@@ -121,7 +121,7 @@ JEMALLOC_DIAGNOSTIC_DISABLE_SPURIOUS
+ 	(_ptr == NULL ? NULL :						\
+ 	 cheri_andperm(cheri_setboundsexact(_ptr,			\
+ 	     _size == 0 ? 1 : _size),					\
+-	     CHERI_PERMS_USERSPACE_DATA & ~CHERI_PERM_SW_VMEM));	\
++	     CHERI_PERMS_USERSPACE_DATA | CHERI_PERM_SW_VMEM));	\
+ })
+ 
+ /*
+diff --git a/contrib/jemalloc/src/jemalloc.c b/contrib/jemalloc/src/jemalloc.c
+index fa056015ee7b..8a7ae295c580 100644
+--- a/contrib/jemalloc/src/jemalloc.c
++++ b/contrib/jemalloc/src/jemalloc.c
+@@ -3815,6 +3815,7 @@ je_malloc_underlying_allocation(void *ptr) {
+ 				ret = cheri_andperm(
+ 				    cheri_setbounds(ret, underlying_size),
+ 				    CHERI_PERMS_USERSPACE_DATA | CHERI_PERM_SW_VMEM);
++        ret = __builtin_cheri_cc_set_type(ret, -1); 
+ 		}
+ 	}
+ 
+diff --git a/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td b/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
+index a836227e1895..2c77ff32ca9e 100644
+--- a/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
++++ b/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
+@@ -295,6 +295,8 @@ foreach i = 3...31 in
+   def : SysReg<"mhpmcounter"#i#"h", !add(0xB83, !sub(i, 3))>;
+ }
+ 
++def : SysReg<"ccp", 0x7C0>
++
+ //===----------------------------------------------------------------------===//
+ // Machine Counter Setup
+ //===----------------------------------------------------------------------===//
+diff --git a/include/stdlib.h b/include/stdlib.h
+index b802a17e4de7..d939d0f52cc0 100644
+--- a/include/stdlib.h
++++ b/include/stdlib.h
+@@ -98,6 +98,8 @@ char	*getenv(const char *);
+ long	 labs(long) __pure2;
+ ldiv_t	 ldiv(long, long) __pure2;
+ void	*malloc(size_t) __malloc_like __result_use_check __alloc_size(1);
++int malloc2(size_t);
++
+ void	 malloc_revoke(void)
+ 	    __deprecated1("use malloc_revoke_quarantine_force_flush() instead");
+ int	 malloc_revoke_quarantine_force_flush(void);
+diff --git a/lib/libc/gen/tls_malloc.c b/lib/libc/gen/tls_malloc.c
+index 667acdb900d4..e52d05395199 100644
+--- a/lib/libc/gen/tls_malloc.c
++++ b/lib/libc/gen/tls_malloc.c
+@@ -74,16 +74,16 @@
+ #include <stdint.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <stdbool.h>
+ #include <unistd.h>
+ 
+ #include "libc_private.h"
+ #include "spinlock.h"
++#include "../stdlib/u_subr_unit.h"
+ 
+ #ifndef __CHERI_PURE_CAPABILITY__
+ #define	cheri_setbounds(ptr, size)	((void *)(ptr))
+ #define	cheri_andperm(ptr, size)	((void *)(ptr))
+-#define	CHERI_PERMS_USERSPACE_DATA	0
+-#define	CHERI_PERM_SW_VMEM		0
+ #endif
+ 
+ static spinlock_t tls_malloc_lock = _SPINLOCK_INITIALIZER;
+@@ -91,7 +91,9 @@ static spinlock_t tls_malloc_lock = _SPINLOCK_INITIALIZER;
+ #define	TLS_MALLOC_UNLOCK	if (__isthreaded) _SPINUNLOCK(&tls_malloc_lock)
+ static void morecore(int);
+ static void *__tls_malloc_aligned(size_t size, size_t align);
+-
++#ifdef CAPREVOKE
++static void tls_caprevoke_init(void);
++#endif
+ /*
+  * The overhead on a block is one pointer. When free, this space
+  * contains a pointer to the next free block. When in use, the first
+@@ -139,8 +141,6 @@ static struct ov_listhead nextf[NBUCKETS];
+ 
+ #ifdef CAPREVOKE
+ #define	MAX_QUARANTINE	(1024 * 1024)
+-static struct ov_listhead quarantine_bufs[NBUCKETS];
+-static size_t quarantine_size;
+ #endif
+ 
+ static const size_t pagesz = PAGE_SIZE;			/* page size */
+@@ -150,13 +150,19 @@ static const size_t pagesz = PAGE_SIZE;			/* page size */
+ static caddr_t	pagepool_start, pagepool_end;
+ static SLIST_HEAD(, pagepool_header) curpp = SLIST_HEAD_INITIALIZER(curpp);
+ 
+-#ifdef CAPREVOKE
+-static volatile const struct cheri_revoke_info *cri;
+ 
+-static void paint_shadow(void *mem, size_t size);
+-static void clear_shadow(void *mem, size_t size);
+-static void do_revoke();
+-#endif
++
++#ifdef CAPREVOKE
++/* Colored capabilities*/
++static void* cc_set_objectid(void* p){
++	int otype = alloc_unr(cheri_otypes_ptr);
++	if (otype < 0) {
++		return p;
++	}
++	p = __builtin_cheri_cc_set_type(p, otype);
++	return p;
++}
++#endif /* CAPREVOKE */
+ 
+ static int
+ __morepages(int n)
+@@ -202,7 +208,7 @@ __rederive_pointer(void *ptr)
+ 	SLIST_FOREACH(pp, &curpp, ph_next) {
+ 		if (cheri_is_address_inbounds(pp, cheri_getbase(ptr))) {
+ 			TLS_MALLOC_UNLOCK;
+-			return (cheri_setaddress(pp, cheri_getaddress(ptr)));
++			return ( __builtin_cheri_cc_set_type(cheri_setaddress(pp, cheri_getaddress(ptr)), -1));
+ 		}
+ 	}
+ 	TLS_MALLOC_UNLOCK;
+@@ -216,68 +222,14 @@ bound_ptr(void *mem, size_t nbytes)
+ 	void *ptr;
+ 
+ 	ptr = cheri_setbounds(mem, nbytes);
++#ifdef CAPREVOKE
++	ptr = cc_set_objectid(ptr);
++#endif
+ 	ptr = cheri_andperm(ptr,
+ 	    CHERI_PERMS_USERSPACE_DATA & ~CHERI_PERM_SW_VMEM);
+ 	return (ptr);
+ }
+ 
+-#ifdef CAPREVOKE
+-static void
+-try_revoke(int target_bucket)
+-{
+-	int bucket;
+-	struct overhead *op;
+-
+-	/*
+-	 * Don't revoke unless there is enough in quarantine and some of
+-	 * it would be returned to the bucket we want to refill.
+-	 */
+-	if (quarantine_size < MAX_QUARANTINE ||
+-	    SLIST_EMPTY(&quarantine_bufs[target_bucket]))
+-		return;
+-
+-	if (cri == NULL) {
+-		if (cheri_revoke_get_shadow(CHERI_REVOKE_SHADOW_INFO_STRUCT,
+-		    NULL, (void **)&cri) != 0) {
+-			if (errno == ENOSYS) {
+-				/*
+-				 * Revocation is not supported.
+-				 * Just pretend like it worked.
+-				 */
+-				goto dequarantine;
+-			} else
+-				abort();
+-		}
+-	}
+-
+-
+-	for (bucket = 0; bucket < NBUCKETS; bucket++) {
+-		SLIST_FOREACH(op, &quarantine_bufs[bucket], ov_next)
+-			paint_shadow(op, FIRST_BUCKET_SIZE << bucket);
+-	}
+-	atomic_thread_fence(memory_order_acq_rel);
+-
+-	do_revoke();
+-
+-	for (bucket = 0; bucket < NBUCKETS; bucket++) {
+-		SLIST_FOREACH(op, &quarantine_bufs[bucket], ov_next)
+-			clear_shadow(op, FIRST_BUCKET_SIZE << bucket);
+-	}
+-	atomic_thread_fence(memory_order_acq_rel);
+-
+-dequarantine:
+-	for (bucket = 0; bucket < NBUCKETS; bucket++) {
+-		while (!SLIST_EMPTY(&quarantine_bufs[bucket])) {
+-			op = SLIST_FIRST(&quarantine_bufs[bucket]);
+-			SLIST_REMOVE_HEAD(&quarantine_bufs[bucket], ov_next);
+-			SLIST_INSERT_HEAD(&quarantine_bufs[bucket], op,
+-			    ov_next);
+-		}
+-	}
+-	quarantine_size = 0;
+-}
+-#endif
+-
+ static void *
+ __tls_malloc(size_t nbytes)
+ {
+@@ -307,10 +259,6 @@ __tls_malloc(size_t nbytes)
+ 	 * request more memory from the system.
+ 	 */
+ 	TLS_MALLOC_LOCK;
+-#ifdef CAPREVOKE
+-	if (SLIST_EMPTY(bucketp))
+-		try_revoke(bucket);
+-#endif
+ 	if (SLIST_EMPTY(bucketp)) {
+ 		morecore(bucket);
+ 		if (SLIST_EMPTY(bucketp)) {
+@@ -331,6 +279,11 @@ void *
+ tls_malloc(size_t nbytes)
+ {
+ 	void *mem;
++#ifdef CAPREVOKE
++	if (!global_cheri_otypes_initialized)
++		tls_caprevoke_init();
++#endif
++
+ #ifdef __CHERI_PURE_CAPABILITY__
+ 	size_t align, mask;
+ 
+@@ -468,28 +421,51 @@ paint_shadow(void *mem, size_t size)
+ 	    (ptraddr_t)mem, size);
+ }
+ 
+-static void
+-clear_shadow(void *mem, size_t size)
++/* Colored capabilities implementation */
++static void tls_caprevoke_init(void)
+ {
+-	struct pagepool_header *pp;
++	if (global_cheri_otypes_initialized) {
++		return;
++	}
++
++	if (cri == NULL) {
++		if (cheri_revoke_get_shadow(CHERI_REVOKE_SHADOW_INFO_STRUCT,
++		    NULL, (void **)&cri) != 0) {
++			abort();
++		}
++	}
++
++	if (cheri_revoke_get_shadow(CHERI_CC_SEALING_BITMAP, NULL,
++	    &global_sealing_bitmap) != 0) {
++		abort();
++	}
++	global_sealing_bitmap_size = __builtin_cheri_length_get(global_sealing_bitmap);
++	
++	cheri_otypes_ptr = get_global_cheri_otypes();
+ 
+-	pp = cheri_setoffset(pp, 0);
+-	caprev_shadow_nomap_clear_raw(cri->base_mem_nomap, pp->ph_shadow,
+-	    (ptraddr_t)mem, size);
+ }
+ 
+-static void
+-do_revoke(void)
+-{
+-	int error;
+ 
+-	atomic_thread_fence(memory_order_acq_rel);
+-	cheri_revoke_epoch_t start_epoch = cri->epochs.enqueue;
+-	while (!cheri_revoke_epoch_clears(cri->epochs.dequeue, start_epoch)) {
+-		error = cheri_revoke(CHERI_REVOKE_LAST_PASS, start_epoch, NULL);
+-		assert(error == 0);
++
++void tls_caprevoke_mark_sealed(void* __capability ptr){
++	int otype = cheri_gettype(ptr);
++	if(otype==-1){
++		return;
+ 	}
++
++	int byte_offset = otype/8;
++	int bit_offset = otype%8;
++	char sealing_byte = ((char*)global_sealing_bitmap)[byte_offset];
++
++	/* Verify that the memory is not already sealed */
++	if((sealing_byte>>bit_offset)&1){
++		exit(-1);
++	}
++	/* Set sealing bitmap value */
++	((char*)global_sealing_bitmap)[byte_offset] = sealing_byte | (1<<bit_offset);
++	asm("fence\n\t");
+ }
++
+ #endif /* CAPREVOKE */
+ 
+ void
+@@ -503,15 +479,16 @@ tls_free(void *cp)
+ 	op = find_overhead(cp);
+ 	if (op == NULL)
+ 		return;
++	
++#ifdef CAPREVOKE
++	tls_caprevoke_mark_sealed(cp);
++#endif
++
+ 	TLS_MALLOC_LOCK;
+ 	bucket = op->ov_index;
+ 	assert(bucket < NBUCKETS);
+-#ifdef CAPREVOKE
+-	SLIST_INSERT_HEAD(&quarantine_bufs[bucket], op, ov_next);
+-	quarantine_size += FIRST_BUCKET_SIZE << bucket;
+-#else
++
+ 	SLIST_INSERT_HEAD(&nextf[bucket], op, ov_next);
+-#endif
+ 	TLS_MALLOC_UNLOCK;
+ }
+ 
+@@ -536,6 +513,10 @@ void *
+ tls_malloc_aligned(size_t nbytes, size_t align)
+ {
+ #ifdef __CHERI_PURE_CAPABILITY__
++#ifdef CAPREVOKE
++	if (!global_cheri_otypes_initialized)
++		tls_caprevoke_init();
++#endif
+ 	size_t mask;
+ 
+ 	mask = CHERI_REPRESENTABLE_ALIGNMENT_MASK(nbytes);
+diff --git a/lib/libc/stdlib/Makefile.inc b/lib/libc/stdlib/Makefile.inc
+index 38a4be042b1b..70e18d065a73 100644
+--- a/lib/libc/stdlib/Makefile.inc
++++ b/lib/libc/stdlib/Makefile.inc
+@@ -13,7 +13,7 @@ MISRCS+=C99_Exit.c a64l.c abort.c abs.c atexit.c atof.c atoi.c atol.c atoll.c \
+ 	random.c reallocarray.c reallocf.c realpath.c remque.c \
+ 	set_constraint_handler_s.c strfmon.c strtoimax.c \
+ 	strtol.c strtold.c strtoll.c strtoq.c strtoul.c strtonum.c strtoull.c \
+-	strtoumax.c strtouq.c system.c tdelete.c tfind.c tsearch.c twalk.c
++	strtoumax.c strtouq.c system.c tdelete.c tfind.c tsearch.c twalk.c u_subr_unit.c
+ 
+ CFLAGS.qsort.c+= -Wsign-compare
+ 
+diff --git a/lib/libc/stdlib/_unrhdr.h b/lib/libc/stdlib/_unrhdr.h
+new file mode 100644
+index 000000000000..13edf40fcbe3
+--- /dev/null
++++ b/lib/libc/stdlib/_unrhdr.h
+@@ -0,0 +1,51 @@
++/*-
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2004 Poul-Henning Kamp
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ */
++
++#ifndef _SYS_UNRHDR_H
++#define _SYS_UNRHDR_H
++
++#include <sys/queue.h>
++
++struct mtx;
++
++/* Header element for a unr number space. */
++
++struct unrhdr {
++	TAILQ_HEAD(unrhd,unr)	head;
++	u_int			low;	/* Lowest item */
++	u_int			high;	/* Highest item */
++	u_int			busy;	/* Count of allocated items */
++	u_int			alloc;	/* Count of memory allocations */
++	u_int			first;	/* items in allocated from start */
++	u_int			last;	/* items free at end */
++	struct mtx		*mtx;
++	TAILQ_HEAD(unrfr,unr)	ppfree;	/* Items to be freed after mtx
++					   lock dropped */
++};
++
++#endif
+diff --git a/lib/libc/stdlib/malloc/Symbol.map b/lib/libc/stdlib/malloc/Symbol.map
+index b9a1f8251e15..506f75388db9 100644
+--- a/lib/libc/stdlib/malloc/Symbol.map
++++ b/lib/libc/stdlib/malloc/Symbol.map
+@@ -2,6 +2,7 @@ FBSD_1.0 {
+ 	_malloc_options;
+ 	_malloc_message;
+ 	malloc;
++	malloc2;
+ 	posix_memalign;
+ 	calloc;
+ 	realloc;
+diff --git a/lib/libc/stdlib/malloc/malloc_revoke.c b/lib/libc/stdlib/malloc/malloc_revoke.c
+index 9326f12a8344..9469fb4047eb 100644
+--- a/lib/libc/stdlib/malloc/malloc_revoke.c
++++ b/lib/libc/stdlib/malloc/malloc_revoke.c
+@@ -50,3 +50,7 @@ malloc_is_revoking(void)
+ {
+ 	return (false);
+ }
++
++int malloc2(size_t size){
++	return 0;
++}
+\ No newline at end of file
+diff --git a/lib/libc/stdlib/malloc/mrs/mrs.3 b/lib/libc/stdlib/malloc/mrs/mrs.3
+index e76cd749c5fb..85ac9df5c921 100644
+--- a/lib/libc/stdlib/malloc/mrs/mrs.3
++++ b/lib/libc/stdlib/malloc/mrs/mrs.3
+@@ -173,6 +173,7 @@ interface which takes a capability passed to
+ .Fn free
+ or
+ .Fn realloc
++.Fn malloc2
+ and returns a capability to the underlying allocator bearing the
+ .Dt CHERI_PERM_SW_VMEM
+ permission.
+diff --git a/lib/libc/stdlib/malloc/mrs/mrs.c b/lib/libc/stdlib/malloc/mrs/mrs.c
+index cf1f129248ed..8b0d4021a959 100644
+--- a/lib/libc/stdlib/malloc/mrs/mrs.c
++++ b/lib/libc/stdlib/malloc/mrs/mrs.c
+@@ -36,6 +36,7 @@
+ #include <sys/cpuset.h>
+ #include <sys/queue.h>
+ #include <sys/sysctl.h>
++#include <sys/mutex.h>
+ 
+ #include <cheri/cheri.h>
+ #include <cheri/cheric.h>
+@@ -65,6 +66,9 @@
+ 
+ #include "libc_private.h"
+ #include "mrs_utrace.h"
++#include "../../u_subr_unit.h"
++#include <sys/_unrhdr.h>
++
+ 
+ /*
+  * Knobs:
+@@ -95,7 +99,6 @@
+  * size to QUARANTINE_NUMERATOR / QUARANTINE_DENOMINATOR times the size
+  * of the heap (default 1/4).
+  */
+-
+ #ifdef QUARANTINE_RATIO
+ #error QUARANTINE_RATIO is obsolete, use QUARANTINE_NUMERATOR/QUARANTINE_DENOMINATOR
+ #endif
+@@ -172,7 +175,7 @@ void REAL(sdallocx)(void *, size_t, int);
+  */
+ 
+ /* functions */
+-
++static void* cc_set_objectid(void* p);
+ static void *mrs_malloc(size_t);
+ static void mrs_free(void *);
+ static void *mrs_calloc(size_t, size_t);
+@@ -307,17 +310,23 @@ static const size_t CAPREVOKE_BITMAP_ALIGNMENT = sizeof(void *);
+ static const size_t DESCRIPTOR_SLAB_ENTRIES = 10000;
+ static const size_t MIN_REVOKE_HEAP_SIZE = 8 * 1024 * 1024;
+ 
+-static volatile const struct cheri_revoke_info *cri;
++
+ static size_t page_size;
+ 
+ /* Flags are constant after initialization. */
+-static void *entire_shadow;
+ static bool quarantining = true;
+ static bool revoke_every_free = false;
+ static bool revoke_async = false;
+ static bool bound_pointers = false;
+ static bool abort_on_validation_failure = true;
+ static bool mrs_initialized = false;
++static int cheri_otypes_threshold = CHERI_OTYPE_USER_MAX - 2000;
++
++static int revoke_count = 0;
++static int malloc_count = 0;
++
++static bool is_revoking = false;
++static uint64_t epoch_count = 0;
+ 
+ static unsigned int quarantine_denominator = QUARANTINE_DENOMINATOR;
+ static unsigned int quarantine_numerator = QUARANTINE_NUMERATOR;
+@@ -379,9 +388,6 @@ static struct mrs_descriptor_slab * _Atomic free_descriptor_slabs;
+  * amount of memory that the allocator views as allocated (includes
+  * quarantine)
+  */
+-static _Atomic size_t allocated_size;
+-static size_t max_allocated_size;
+-
+ /*
+  * Quarantine arenas for application threads.  At any given time, one is in
+  * active use, and the others are being cleaned.
+@@ -389,20 +395,12 @@ static size_t max_allocated_size;
+ #define	APP_QUARANTINE_ARENAS	2
+ _Static_assert(APP_QUARANTINE_ARENAS >= 2,
+     "APP_QUARANTINE_ARENAS must be at least 2");
+-static struct mrs_quarantine app_quarantine_store[APP_QUARANTINE_ARENAS];
+ 
+-static struct mrs_quarantine *app_quarantine;
+ /* Arenas with revocation pending. */
+ static TAILQ_HEAD(, mrs_quarantine) app_quarantine_revoke_list =
+     TAILQ_HEAD_INITIALIZER(app_quarantine_revoke_list);
+-/* Arenas with revocation complete. */
+-static TAILQ_HEAD(, mrs_quarantine) app_quarantine_free_list =
+-    TAILQ_HEAD_INITIALIZER(app_quarantine_free_list);
+ 
+-static void quarantine_flush(struct mrs_quarantine *quarantine);
+-static void quarantine_move(struct mrs_quarantine *dst,
+-    struct mrs_quarantine *src);
+-static void quarantine_revoke(struct mrs_quarantine *quarantine);
++static void quarantine_revoke();
+ 
+ #ifdef OFFLOAD_QUARANTINE
+ /* quarantine for the offload thread */
+@@ -432,6 +430,16 @@ mrs_puts(const char *p)
+ 	}								\
+ } while (0)
+ 
++/* returns true if lock acquired, false if already held */ 
++#define mrs_trylock(mtx) ({ \
++    int ret = pthread_mutex_trylock((mtx)); \
++    if (ret != 0 && ret != EBUSY) { \
++        mrs_puts("pthread error\n"); \
++        exit(7); \
++    } \
++    (ret == 0); \
++})
++
+ /*
+  * Hack to initialize mutexes without calling malloc.  Without this, locking
+  * operations in allocation functions would cause an infinite loop.  The buf
+@@ -464,6 +472,7 @@ _pthread_mutex_init_calloc_cb(pthread_mutex_t *mutex,
+ 	_pthread_mutex_init_calloc_cb(&name, name ## _storage)
+ 
+ create_lock(app_quarantine_lock);
++create_lock(mrs_revoke_lock);
+ 
+ /* quarantine offload support */
+ #ifdef OFFLOAD_QUARANTINE
+@@ -589,14 +598,6 @@ alloc_descriptor_slab(void)
+  * Sometimes malloc implementations are recursive in which case we leak some
+  * space.  This was observed in snmalloc for allocations of size 0x20.
+  */
+-static inline void
+-increment_allocated_size(void *allocated)
+-{
+-	allocated_size += cheri_getlen(allocated);
+-	if (allocated_size > max_allocated_size) {
+-		max_allocated_size = allocated_size;
+-	}
+-}
+ 
+ static inline void
+ clear_region(void *mem, size_t len)
+@@ -620,40 +621,6 @@ clear_region(void *mem, size_t len)
+ 	}
+ }
+ 
+-/*
+- * Insert a freed allocation into a quarantine with minimal validation; increase
+- * quarantine size by the length of the allocation's capability.
+- */
+-static inline void
+-quarantine_insert(struct mrs_quarantine *quarantine, void *ptr, size_t size)
+-{
+-	MRS_UTRACE(UTRACE_MRS_QUARANTINE_INSERT, ptr, size, 0, NULL);
+-	if (quarantine->list == NULL ||
+-	    quarantine->list->num_descriptors == DESCRIPTOR_SLAB_ENTRIES) {
+-		struct mrs_descriptor_slab *ins = alloc_descriptor_slab();
+-		if (ins == NULL) {
+-			mrs_puts("quarantine_insert: couldn't allocate new descriptor slab\n");
+-			exit(7);
+-		}
+-		ins->next = quarantine->list;
+-		quarantine->list = ins;
+-	}
+-
+-	if ((__builtin_cheri_perms_get(ptr) & CHERI_PERM_SW_VMEM) == 0) {
+-		mrs_printf("fatal error: can't insert pointer without SW_VMEM");
+-		exit(7);
+-	}
+-
+-	quarantine->list->slab[quarantine->list->num_descriptors].ptr = ptr;
+-	quarantine->list->slab[quarantine->list->num_descriptors].size = size;
+-	quarantine->list->num_descriptors++;
+-
+-	quarantine->size += size;
+-	if (quarantine->size > quarantine->max_size) {
+-		quarantine->max_size = quarantine->size;
+-	}
+-}
+-
+ /*
+  * Given a pointer freed by the application, validate it by (1) checking that
+  * the pointer has an underlying allocation (was actually allocated by the
+@@ -687,115 +654,26 @@ validate_freed_pointer(void *ptr)
+ 	}
+ 	/*mrs_debug_printf("freed underlying allocation %#p\n", underlying_allocation);*/
+ 
+-	/*
+-	 * Here we use the bitmap to synchronize and make sure that
+-	 * our guarantee is upheld in multithreaded environments.  We
+-	 * paint the bitmap to signal to the kernel what needs to be
+-	 * revoked, but we also gate the operation of bitmap painting,
+-	 * so that we can only successfully paint the bitmap for some
+-	 * freed allocation (and let that allocation pass onto the
+-	 * quarantine list) if it is legitimately allocated on the
+-	 * heap, not revoked, and not previously queued for
+-	 * revocation, at the time of painting.
+-	 *
+-	 * Essentially at this point we don't want something to end up
+-	 * on the quarantine list twice.  If that were to happen, we
+-	 * wouldn't be upholding the principle that prevents heap
+-	 * aliasing.
+-	 *
+-	 * We can't allow a capability to pass painting and end up on
+-	 * the quarantine list if its region of the bitmap is already
+-	 * painted.  If that were to happen, the two quarantine list
+-	 * entries corresponding to that region would be freed
+-	 * non-atomically, such that we could observe one being freed,
+-	 * the allocator reallocating the region, then the other being
+-	 * freed <! ERROR !>.
+-	 *
+-	 * We also can't allow a previously revoked capability to pass
+-	 * painting and end up on the quarantine list.  If that were to
+-	 * happen, we could observe:
+-	 *
+-	 * ptr mrs_freed -> painted in bitmap -> added to quarantine ->
+-	 * revoked -> cleared in bitmap ->
+-	 * /THREAD SWITCH/ revoked ptr mrs_freed -> painted in bitmap ->
+-	 * revoked again -> cleared in bitmap -> freed back to allocator ->
+-	 * reused /THREAD SWITCH BACK/ -> freed back to allocator <! ERROR !>
+-	 *
+-	 * Similarly for untagged capabilities, because then a
+-	 * malicious user could just construct a capability that takes
+-	 * the place of revoked ptr (i.e. same address) above.
+-	 *
+-	 * We block these behaviors with a bitmap painting function
+-	 * that takes in a user pointer and the full length of the
+-	 * allocation.  It will only succeed if, atomically at the
+-	 * time of painting, (1) the bitmap region is not painted, (2)
+-	 * the user pointer is tagged, and (3) the user pointer is not
+-	 * revoked.  If the painting function fails, we short-circuit
+-	 * and do not add allocation to quarantine.
+-	 *
+-	 * We can clear the bitmap after revocation and before freeing
+-	 * back to the allocator, which "opens" the gate for
+-	 * revocation of that region to occur again.  It's fine for
+-	 * clearing not to be atomic with freeing back to the
+-	 * allocator, though, because between revocation and the
+-	 * allocator reallocating the region, the user does not have
+-	 * any valid capabilities to the region by definition.
+-	 */
+-
+-	/*
+-	 * Doesn't matter whether or not the len of underlying_allocation is
+-	 * actually a 16-byte multiple because all allocations will be 16-byte
+-	 * aligned.
+-	 */
+-	if (caprev_shadow_nomap_set_len(cri->base_mem_nomap, entire_shadow,
+-	    cheri_getbase(ptr),
+-	    __builtin_align_up(cheri_getlen(underlying_allocation),
+-	    CAPREVOKE_BITMAP_ALIGNMENT), ptr)) {
+-		mrs_debug_printf("validate_freed_pointer: setting bitmap failed\n");
+-		return (NULL);
++	int otype = cheri_gettype(ptr);
++	if(otype==-1){
++		return (underlying_allocation);
+ 	}
++	int byte_offset = otype/8;
++	int bit_offset = otype%8;
++	char sealing_byte = ((char*)global_sealing_bitmap)[byte_offset];
++
++	//verify that the memory is not already sealed
++	if((sealing_byte>>bit_offset)&1){
++		mrs_debug_printf("validate_freed_pointer: memory already freed\n");
++		exit(-1);
++	}
++	//set sealing bitmap value
++	((char*)global_sealing_bitmap)[byte_offset] = sealing_byte | (1<<bit_offset);
++	asm("fence\n\t");
+ 
+ 	return (underlying_allocation);
+ }
+ 
+-static inline bool
+-quarantine_should_flush(struct mrs_quarantine *quarantine, bool is_free)
+-{
+-	if (is_free && revoke_every_free)
+-		return true;
+-
+-#ifdef REVOKE_ON_FREE
+-	if (!is_free)
+-		return false;
+-#else
+-	if (is_free)
+-		return false;
+-#endif
+-
+-	if (allocated_size < MIN_REVOKE_HEAP_SIZE)
+-		return false;
+-
+-	/*
+-	 * Flush quarantine if
+-	 *                                       quarantine_numerator
+-	 * quarantine->size >= allocated_size * ----------------------
+-	 *                                      quarantine_denominator
+-	 *
+-	 * Avoid division by multiplying both sides by quarantine_numerator.
+-	 */
+-	return (quarantine->size * quarantine_denominator >=
+-	    allocated_size * quarantine_numerator);
+-}
+-
+-static void
+-app_quarantine_remove(struct mrs_quarantine *to, struct mrs_quarantine *src)
+-{
+-	quarantine_move(to, src);
+-	TAILQ_REMOVE(&app_quarantine_revoke_list, src, next);
+-	src->revoking = false;
+-	TAILQ_INSERT_TAIL(&app_quarantine_free_list, src, next);
+-}
+-
+ /*
+  * Kick off an asynchronous revocation pass for the current application
+  * quarantine arena, and/or check to see whether a previously scheduled pass has
+@@ -804,57 +682,48 @@ app_quarantine_remove(struct mrs_quarantine *to, struct mrs_quarantine *src)
+  * This function assumes that the application quarantine lock is held and will
+  * drop it before returning.
+  */
++static int count_bitmap(u_int64_t* sealing_bitmap, int size){
++	int count = 0;
++	for(int i=0;i<size/sizeof(u_int64_t);i++){
++		u_int64_t word = sealing_bitmap[i];
++		for(int bit_offset = 0;bit_offset<sizeof(u_int64_t)*8;bit_offset++){
++			if((word>>bit_offset)&1){
++				count++;
++			}
++		}
++	}
++	return count;
++}
++
+ static void
+ app_quarantine_revoke_async(void)
+ {
+-	struct mrs_quarantine *curr, *next;
+-	cheri_revoke_epoch_t epoch;
+-
+-	/*
+-	 * Add this arena to the list of pending revocations if it isn't already
+-	 * there.
+-	 */
+-	curr = app_quarantine;
+-	next = TAILQ_FIRST(&app_quarantine_free_list);
+-	if (!curr->revoking && next != NULL) {
+-		TAILQ_REMOVE(&app_quarantine_free_list, next, next);
+-		app_quarantine = next;
+-
+-		curr->epoch = cri->epochs.enqueue;
+-		curr->revoking = true;
+-		TAILQ_INSERT_TAIL(&app_quarantine_revoke_list, curr, next);
+-	}
+-	assert(!TAILQ_EMPTY(&app_quarantine_revoke_list));
+-	epoch = TAILQ_FIRST(&app_quarantine_revoke_list)->epoch;
+-	mrs_unlock(&app_quarantine_lock);
++	(void)cheri_revoke(CHERI_REVOKE_ASYNC, epoch_count, NULL);
++	if(is_revoking){
++		if (cheri_revoke_epoch_clears(cri->epochs.dequeue, epoch_count)) {
++			revoke_count++;
++			epoch_count = cri->epochs.dequeue;
++			void* sealing_bitmap_copy;
++			if (cheri_revoke_get_shadow(CHERI_CC_SEALING_BITMAP_COPY, NULL,
++				&sealing_bitmap_copy) != 0) {
++				mrs_puts("error getting sealing bitmap copy cap\n");
++				exit(7);
++			}
+ 
+-	(void)cheri_revoke(CHERI_REVOKE_ASYNC, epoch, NULL);
++			//unset bits in sealing bitmap
++			for(int i = 0; i<global_sealing_bitmap_size/8;i++){
++				((u_int64_t*)global_sealing_bitmap)[i] = ((u_int64_t*)global_sealing_bitmap)[i]^((u_int64_t*)sealing_bitmap_copy)[i];
++			}
+ 
+-	/*
+-	 * Is it possible that some of the pending revocation work has finished?
+-	 * Flush some of the revoked memory back to the underlying allocator if
+-	 * so.
+-	 */
+-	if (cheri_revoke_epoch_clears(cri->epochs.dequeue, epoch)) {
+-		struct mrs_quarantine tmp;
++			int uh_is_heap_alloc = cheri_otypes_ptr!=&cheri_otypes;
++			free_many_unr(&cheri_otypes_ptr, (u_int64_t *)sealing_bitmap_copy, uh_is_heap_alloc);
+ 
+-		mrs_lock(&app_quarantine_lock);
+-		next = TAILQ_FIRST(&app_quarantine_revoke_list);
+-		if (next == NULL) {
+-			mrs_unlock(&app_quarantine_lock);
+-			return;
++			munmap(sealing_bitmap_copy, global_sealing_bitmap_size);
++			is_revoking = false;
+ 		}
+-		assert(next->revoking);
+-		if (!cheri_revoke_epoch_clears(cri->epochs.dequeue,
+-		    next->epoch)) {
+-			mrs_unlock(&app_quarantine_lock);
+-			return;
+-		}
+-
+-		app_quarantine_remove(&tmp, next);
+-		mrs_unlock(&app_quarantine_lock);
+-		quarantine_flush(&tmp);
++		return;
+ 	}
++	is_revoking = true;
+ }
+ 
+ /*
+@@ -865,20 +734,7 @@ app_quarantine_revoke_async(void)
+ static void
+ malloc_revoke_quarantine_force_flush_async(void)
+ {
+-	struct mrs_quarantine tmp;
+-
+-	while (!TAILQ_EMPTY(&app_quarantine_revoke_list)) {
+-		struct mrs_quarantine *curr;
+-
+-		curr = TAILQ_FIRST(&app_quarantine_revoke_list);
+-		app_quarantine_remove(&tmp, curr);
+-		mrs_unlock(&app_quarantine_lock);
+-		quarantine_revoke(&tmp);
+-		mrs_lock(&app_quarantine_lock);
+-	}
+-	quarantine_move(&tmp, app_quarantine);
+-	mrs_unlock(&app_quarantine_lock);
+-	quarantine_revoke(&tmp);
++	app_quarantine_revoke_async();
+ }
+ 
+ #if defined(PRINT_CAPREVOKE) || defined(PRINT_CAPREVOKE_MRS)
+@@ -959,87 +815,6 @@ print_cheri_revoke_stats(char *what, struct cheri_revoke_syscall_info *crsi,
+ }
+ #endif /* PRINT_CAPREVOKE */
+ 
+-static void
+-quarantine_flush(struct mrs_quarantine *quarantine)
+-{
+-	struct mrs_descriptor_slab *prev = NULL;
+-
+-	MRS_UTRACE(UTRACE_MRS_QUARANTINE_FLUSH, NULL, 0, 0, NULL);
+-	for (struct mrs_descriptor_slab *iter = quarantine->list; iter != NULL;
+-	     iter = iter->next) {
+-		for (int i = 0; i < iter->num_descriptors; i++) {
+-#ifdef OFFLOAD_QUARANTINE
+-			/*
+-			 * In the offload case, only clear the bitmap
+-			 * for validated descriptors (cap != NULL).
+-			 */
+-			if (iter->slab[i].ptr == NULL)
+-				continue;
+-#endif
+-
+-			/*
+-			 * Doesn't matter if the underlying
+-			 * size isn't a 16-byte multiple
+-			 * because all allocations will be
+-			 * 16-byte aligned.
+-			 */
+-			size_t len = __builtin_align_up(
+-			    cheri_getlen(iter->slab[i].ptr),
+-			    CAPREVOKE_BITMAP_ALIGNMENT);
+-			caprev_shadow_nomap_clear_len(
+-			    cri->base_mem_nomap, entire_shadow,
+-			    cheri_getbase(iter->slab[i].ptr), len);
+-
+-			/*
+-			 * Don't construct a pointer to a
+-			 * previously revoked region until the
+-			 * bitmap is cleared.
+-			 */
+-			atomic_thread_fence(memory_order_release);
+-
+-#ifdef CLEAR_ON_RETURN
+-			clear_region(iter->slab[i].ptr,
+-			    cheri_getlen(iter->slab[i].ptr));
+-#endif /* CLEAR_ON_RETURN */
+-
+-			/*
+-			 * We have a VMEM-bearing cap from
+-			 * malloc_underlying_allocation.
+-			 *
+-			 * XXX: We used to rely on the
+-			 * underlying allocator to rederive
+-			 * caps but snmalloc2's CHERI support
+-			 * doesn't do that by default, so
+-			 * we'll clear VMEM here.  This feels
+-			 * wrong, somehow; perhaps we want to
+-			 * retry with snmalloc1 not doing
+-			 * rederivation now that we're doing
+-			 * this?
+-			 */
+-			REAL(free)(__builtin_cheri_perms_and(iter->slab[i].ptr,
+-			    ~CHERI_PERM_SW_VMEM));
+-		}
+-		prev = iter;
+-	}
+-
+-	size_t utrace_allocated_size = 0;
+-	if (prev != NULL) {
+-		/* Free the quarantined descriptors. */
+-		prev->next = free_descriptor_slabs;
+-		while (!atomic_compare_exchange_weak(&free_descriptor_slabs,
+-		    &prev->next, quarantine->list))
+-			;
+-
+-		quarantine->list = NULL;
+-		allocated_size -= quarantine->size;
+-		utrace_allocated_size += quarantine->size;
+-		quarantine->size = 0;
+-	}
+-	mrs_debug_printf("quarantine_flush: flushed, allocated_size %zu quarantine->size %zu\n",
+-	    allocated_size, quarantine->size);
+-	MRS_UTRACE(UTRACE_MRS_QUARANTINE_FLUSH_DONE, NULL, utrace_allocated_size, 0, NULL);
+-}
+-
+ /*
+  * Perform revocation then iterate through the quarantine and free entries with
+  * non-zero underlying size (offload thread sets unvalidated caps to have zero
+@@ -1048,7 +823,7 @@ quarantine_flush(struct mrs_quarantine *quarantine)
+  * Supports ablation study knobs.
+  */
+ static void
+-quarantine_revoke(struct mrs_quarantine *quarantine)
++quarantine_revoke(void)
+ {
+ 	/* Don't read epoch until all bitmap painting is done. */
+ 	atomic_thread_fence(memory_order_acq_rel);
+@@ -1079,24 +854,15 @@ quarantine_revoke(struct mrs_quarantine *quarantine)
+ 		(void)cheri_revoke(
+ 		    CHERI_REVOKE_LAST_PASS | CHERI_REVOKE_TAKE_STATS,
+ 		    start_epoch, NULL);
++		mrs_printf("epoch count: %lu, cri epoch: %lu\n", start_epoch, cri->epochs.dequeue);
++
+ # endif /* !PRINT_CAPREVOKE */
+ 	}
+ 	MRS_UTRACE(UTRACE_MRS_QUARANTINE_REVOKE_DONE, NULL, 0, 0, NULL);
+-	quarantine_flush(quarantine);
+-}
+-
+-static void
+-quarantine_move(struct mrs_quarantine *dst, struct mrs_quarantine *src)
+-{
+-	dst->list = src->list;
+-	dst->size = src->size;
+-	dst->max_size = src->max_size;
+-	src->list = NULL;
+-	src->size = 0;
+ }
+ 
+ static void
+-_internal_quarantine_flush(struct mrs_quarantine *quarantine)
++_internal_quarantine_flush()
+ {
+ #ifdef OFFLOAD_QUARANTINE
+ 
+@@ -1134,8 +900,6 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
+ 	snmalloc_print_stats();
+ #endif
+ 
+-	quarantine_move(&offload_quarantine, quarantine);
+-
+ 	mrs_unlock(&offload_quarantine_lock);
+ 	if (pthread_cond_signal(&offload_quarantine_ready)) {
+ 		mrs_puts("pthread error\n");
+@@ -1147,7 +911,7 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
+ #ifdef PRINT_CAPREVOKE_MRS
+ 	mrs_puts("malloc_revoke_quarantine_force_flush\n");
+ #endif
+-	quarantine_revoke(quarantine);
++	quarantine_revoke();
+ #ifdef SNMALLOC_FLUSH
+ 	/* Consume pending messages now in our queue. */
+ 	snmalloc_flush_message_queue();
+@@ -1162,23 +926,17 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
+ int
+ malloc_revoke_quarantine_force_flush(void)
+ {
+-	struct mrs_quarantine local_quarantine;
+-
++	return ENOTSUP;
+ 	if (!quarantining)
+ 		return (ENOTSUP);
+-
+ 	MRS_UTRACE(UTRACE_MRS_MALLOC_REVOKE_QUARANTINE_FORCE_FLUSH, NULL, 0,
+ 	    0, NULL);
+ 
+-	mrs_lock(&app_quarantine_lock);
+-	if (revoke_async) {
++	if (1) {
+ 		malloc_revoke_quarantine_force_flush_async();
+ 	} else {
+-		quarantine_move(&local_quarantine, app_quarantine);
+-		mrs_unlock(&app_quarantine_lock);
+-		_internal_quarantine_flush(&local_quarantine);
++		_internal_quarantine_flush();
+ 	}
+-
+ 	return (0);
+ }
+ 
+@@ -1211,48 +969,34 @@ malloc_is_revoking(void)
+  * runs out of memory and before it calls mmap, but this is not possible from
+  * the wrapper.
+  */
+-static inline void
+-check_and_perform_flush(bool is_free)
+-{
+-	struct mrs_quarantine local_quarantine;
+ 
+-#ifdef OFFLOAD_QUARANTINE
+-	/*
+-	 * We trigger a revocation pass when the unvalidated
+-	 * quarantine hits the highwater mark because if we waited
+-	 * until the validated queue passed the highwater mark, the
+-	 * allocated size might increase (allocations made) between
+-	 * the unvalidated queue and validated queue filling such that
+-	 * the high water mark is no longer hit.  This function just
+-	 * fills up the unvalidated quarantine and passes it off when
+-	 * it's full.  With offload enabled, the "quarantine" global
+-	 * is unvalidated and passed off to the "offload_quarantine"
+-	 * global then processed in place (list entries that fail
+-	 * validation are not processed).
+-	 */
+-#endif
++static inline bool otypes_should_flush(){
++	return cheri_otypes_ptr->busy >= cheri_otypes_threshold;
++}
+ 
++static inline void
++check_and_perform_flush()
++{
+ 	/*
+ 	 * Do an unlocked check and bail quickly if the quarantine
+ 	 * does not require flushing.
+ 	 */
+-	if (!quarantine_should_flush(app_quarantine, is_free))
++	if (!otypes_should_flush())
+ 		return;
+-
+-	/* Recheck with the lock held. */
+-	mrs_lock(&app_quarantine_lock);
+-	if (!quarantine_should_flush(app_quarantine, is_free)) {
+-		mrs_unlock(&app_quarantine_lock);
++	mrs_debug_printf("check_and_perform_flush: otypes busy %d >= threshold %d\n",
++	    cheri_otypes_ptr->busy, cheri_otypes_threshold);
++	/* Attempt to acquire the lock without blocking. */
++	if (!mrs_trylock(&mrs_revoke_lock)) {
+ 		return;
+ 	}
+ 
+-	if (revoke_async) {
+-		app_quarantine_revoke_async();
+-	} else {
+-		quarantine_move(&local_quarantine, app_quarantine);
+-		mrs_unlock(&app_quarantine_lock);
+-		_internal_quarantine_flush(&local_quarantine);
++	if (!otypes_should_flush()) {
++		mrs_unlock(&mrs_revoke_lock);
++		return;
+ 	}
++
++	app_quarantine_revoke_async();
++	mrs_unlock(&mrs_revoke_lock);
+ }
+ 
+ /* constructor and destructor */
+@@ -1288,6 +1032,7 @@ static void
+ mrs_init_impl_locked(void)
+ {
+ 	initialize_lock(app_quarantine_lock);
++	initialize_lock(mrs_revoke_lock);
+ 	initialize_lock(printf_lock);
+ 
+ #ifdef OFFLOAD_QUARANTINE
+@@ -1409,34 +1154,39 @@ mrs_init_impl_locked(void)
+ 	}
+ 	if (!quarantining)
+ 		goto nosys;
+-
+-	if (cheri_revoke_get_shadow(CHERI_REVOKE_SHADOW_INFO_STRUCT, NULL,
+-	    (void **)&cri) != 0) {
+-		if (errno == ENOSYS) {
+-			quarantining = false;
+-			goto nosys;
++    
++	if(!global_cheri_otypes_initialized) {
++		if (cheri_revoke_get_shadow(CHERI_REVOKE_SHADOW_INFO_STRUCT, NULL,
++			(void **)&cri) != 0) {
++			if (errno == ENOSYS) {
++				quarantining = false;
++				goto nosys;
++			}
++			mrs_puts("error getting kernel caprevoke counters\n");
++			exit(7);
+ 		}
+-		mrs_puts("error getting kernel caprevoke counters\n");
+-		exit(7);
++		if (cheri_revoke_get_shadow(CHERI_CC_SEALING_BITMAP, NULL,
++			&global_sealing_bitmap) != 0) {
++			mrs_puts("error getting sealing bitmap cap\n");
++			exit(7);
++		}
++		global_sealing_bitmap_size = __builtin_cheri_length_get(global_sealing_bitmap);
++		/* Use shared global cheri_otypes from u_subr_unit */
++	
++		cheri_otypes_ptr = get_global_cheri_otypes();
+ 	}
+ 
+-	if (cheri_revoke_get_shadow(CHERI_REVOKE_SHADOW_NOVMEM_ENTIRE, NULL,
+-	    &entire_shadow) != 0) {
+-		mrs_puts("error getting entire shadow cap\n");
+-		exit(7);
+-	}
+ 
+-	for (int i = 0; i < APP_QUARANTINE_ARENAS; i++) {
+-		app_quarantine_store[i].revoking = false;
+-		if (i > 0) {
+-			TAILQ_INSERT_TAIL(&app_quarantine_free_list,
+-			    &app_quarantine_store[i], next);
+-		}
+-	}
+-	app_quarantine = &app_quarantine_store[0];
+ 
+ nosys:
+ 	mrs_initialized = true;
++	/*
++	//claim the reserved otypes, 0x3fffc to 0x3ffff are reserved 
++	alloc_unr_specific(cheri_otypes, 0x3fffc);
++	alloc_unr_specific(cheri_otypes, 0x3fffd);
++	alloc_unr_specific(cheri_otypes, 0x3fffe);
++	alloc_unr_specific(cheri_otypes, 0x3ffff);
++	*/
+ 
+ #if defined(PRINT_CAPREVOKE) || defined(PRINT_CAPREVOKE_MRS) || defined(PRINT_STATS)
+ 	mrs_puts(VERSION_STRING);
+@@ -1468,6 +1218,15 @@ mrs_constructor(void)
+ 	mrs_init();
+ }
+ 
++__attribute__((destructor))
++static void mrs_destructor(void)
++{
++	if(getenv("CC_DEBUG")!=NULL){
++		mrs_printf("revoke counter: %d\n", revoke_count);
++		mrs_printf("alloc counter: %d\n", malloc_count);
++	}
++}
++
+ #ifdef PRINT_STATS
+ __attribute__((destructor))
+ static void
+@@ -1485,6 +1244,20 @@ fini(void)
+ }
+ #endif /* PRINT_STATS */
+ 
++/* Colored capabilities*/
++static void* cc_set_objectid(void* p){
++	int otype = alloc_unr(cheri_otypes_ptr);
++	while(otype<0){
++		check_and_perform_flush();
++		otype = alloc_unr(cheri_otypes_ptr);
++	}
++	malloc_count++;
++	assert(otype >= 0);
++  p = __builtin_cheri_cc_set_type(p, otype);
++  p = cheri_andperm(p, ~CHERI_PERM_SW_VMEM);
++	return p;
++}
++
+ /* mrs functions */
+ 
+ static void *
+@@ -1503,7 +1276,7 @@ mrs_malloc(size_t size)
+ 
+ 	/*mrs_debug_printf("mrs_malloc: called\n");*/
+ 
+-	check_and_perform_flush(false);
++	check_and_perform_flush();
+ 
+ 	void *allocated_region;
+ 
+@@ -1516,35 +1289,106 @@ mrs_malloc(size_t size)
+ 	 * for size=0 we might want to pass those calls through, but none
+ 	 * of the currently supported allocators do.
+ 	 */
++
+ 	if (size < CAPREVOKE_BITMAP_ALIGNMENT)
+ 		allocated_region = mrs_real_malloc(CAPREVOKE_BITMAP_ALIGNMENT);
+ 	else
+ 		allocated_region = mrs_real_malloc(size);
++	
+ 	if (allocated_region == NULL) {
+ 		MRS_UTRACE(UTRACE_MRS_MALLOC, NULL, size, 0,
+ 		    allocated_region);
+ 		return (allocated_region);
+ 	}
+ 
++
++
+ #ifdef CLEAR_ON_ALLOC
+ 	clear_region(allocated_region, cheri_getlen(allocated_region));
+ #endif /* CLEAR_ON_ALLOC */
+ 
+-	increment_allocated_size(allocated_region);
+-
+ 	/*mrs_debug_printf("mrs_malloc: called size 0x%zx, allocation %#p\n",
+ 	    size, allocated_region);*/
+ 
++	allocated_region = cc_set_objectid(allocated_region);
++
+ 	MRS_UTRACE(UTRACE_MRS_MALLOC, NULL, size, 0, allocated_region);
+ 	return (allocated_region);
+ }
+ 
++
++
++int malloc2(size_t size)
++{
++	int otype;
++	if(size == 0){
++		return cheri_otypes_ptr->busy;
++		otype = alloc_unr(cheri_otypes_ptr);
++	}else{
++		otype = alloc_unr_specific(cheri_otypes_ptr, size);
++	}
++	assert(otype);
++	return (otype);
++}
++
+ static void *
+ mrs_real_calloc(size_t number, size_t size)
+ {
+ 	return (mrs_bound_pointer(REAL(calloc)(number, size), number * size));
+ }
+ 
++
++void* mrs_calloc_unr(size_t number, size_t size)
++{
++	size_t tmpsize;
++
++	mrs_init();
++
++	if (!quarantining)
++		return (mrs_real_calloc(number, size));
++
++	/*
++	 * This causes problems if our library is initialized before
++	 * the thread library.
++	 */
++	/*mrs_debug_printf("mrs_calloc: called\n");*/
++
++	void *allocated_region;
++
++	/*
++	 * Round up here to make sure there is only one allocation per
++	 * granule without requiring modifications to the underlying
++	 * allocator.
++	 *
++	 * XXX: it's conceviable the underlying allocator could reduce
++	 * the alignment requirement for small sizes but that seems like an
++	 * extraordinarily unlikely and highly questionable optimization.
++	 */
++	if (!__builtin_mul_overflow(number, size, &tmpsize) &&
++	    tmpsize < CAPREVOKE_BITMAP_ALIGNMENT)
++		allocated_region = mrs_real_calloc(1, CAPREVOKE_BITMAP_ALIGNMENT);
++	else
++		allocated_region = mrs_real_calloc(number, size);
++	
++
++	if (allocated_region == NULL) {
++		MRS_UTRACE(UTRACE_MRS_CALLOC, NULL, size, number,
++		    allocated_region);
++		return (allocated_region);
++	}
++
++
++
++	/*
++	 * This causes problems if our library is initialized before
++	 * the thread library.
++	 */
++	/*mrs_debug_printf("mrs_calloc: exit called %d size 0x%zx address %p\n", number, size, allocated_region);*/
++	
++	MRS_UTRACE(UTRACE_MRS_CALLOC, NULL, size, number, allocated_region);
++	return (allocated_region);
++}
++
+ void *
+ mrs_calloc(size_t number, size_t size)
+ {
+@@ -1561,7 +1405,7 @@ mrs_calloc(size_t number, size_t size)
+ 	 */
+ 	/*mrs_debug_printf("mrs_calloc: called\n");*/
+ 
+-	check_and_perform_flush(false);
++	check_and_perform_flush();
+ 
+ 	void *allocated_region;
+ 
+@@ -1579,20 +1423,23 @@ mrs_calloc(size_t number, size_t size)
+ 		allocated_region = mrs_real_calloc(1, CAPREVOKE_BITMAP_ALIGNMENT);
+ 	else
+ 		allocated_region = mrs_real_calloc(number, size);
++	
++
+ 	if (allocated_region == NULL) {
+ 		MRS_UTRACE(UTRACE_MRS_CALLOC, NULL, size, number,
+ 		    allocated_region);
+ 		return (allocated_region);
+ 	}
+ 
+-	increment_allocated_size(allocated_region);
++
+ 
+ 	/*
+ 	 * This causes problems if our library is initialized before
+ 	 * the thread library.
+ 	 */
+ 	/*mrs_debug_printf("mrs_calloc: exit called %d size 0x%zx address %p\n", number, size, allocated_region);*/
+-
++	allocated_region = cc_set_objectid(allocated_region);
++	
+ 	MRS_UTRACE(UTRACE_MRS_CALLOC, NULL, size, number, allocated_region);
+ 	return (allocated_region);
+ }
+@@ -1619,7 +1466,7 @@ mrs_posix_memalign(void **ptr, size_t alignment, size_t size)
+ 	mrs_debug_printf("mrs_posix_memalign: called ptr %p alignment %zu size %zu\n",
+ 	    ptr, alignment, size);
+ 
+-	check_and_perform_flush(false);
++	check_and_perform_flush();
+ 
+ 	if (alignment < CAPREVOKE_BITMAP_ALIGNMENT)
+ 		alignment = CAPREVOKE_BITMAP_ALIGNMENT;
+@@ -1633,7 +1480,8 @@ mrs_posix_memalign(void **ptr, size_t alignment, size_t size)
+ 	clear_region(*ptr, cheri_getlen(*ptr));
+ #endif /* CLEAR_ON_ALLOC */
+ 
+-	increment_allocated_size(*ptr);
++	*ptr = cc_set_objectid(*ptr);
++
+ 
+ 	MRS_UTRACE(UTRACE_MRS_POSIX_MEMALIGN, NULL, size, alignment, *ptr);
+ 	return (ret);
+@@ -1656,7 +1504,7 @@ mrs_aligned_alloc(size_t alignment, size_t size)
+ 	mrs_debug_printf("mrs_aligned_alloc: called alignment %zu size %zu\n",
+ 	    alignment, size);
+ 
+-	check_and_perform_flush(false);
++	check_and_perform_flush();
+ 
+ 	if (alignment < CAPREVOKE_BITMAP_ALIGNMENT)
+ 		alignment = CAPREVOKE_BITMAP_ALIGNMENT;
+@@ -1672,7 +1520,7 @@ mrs_aligned_alloc(size_t alignment, size_t size)
+ 	clear_region(allocated_region, cheri_getlen(allocated_region));
+ #endif /* CLEAR_ON_ALLOC */
+ 
+-	increment_allocated_size(allocated_region);
++	allocated_region = cc_set_objectid(allocated_region);
+ 
+ 	MRS_UTRACE(UTRACE_MRS_ALIGNED_ALLOC, NULL, size, alignment,
+ 	    allocated_region);
+@@ -1764,17 +1612,15 @@ mrs_free(void *ptr)
+ 		else
+ 			return;
+ 	}
++	
++	(REAL(free)(ins));
++
+ #endif /* !OFFLOAD_QUARANTINE */
+ 
+ #ifdef CLEAR_ON_FREE
+ 	bzero(cheri_setoffset(ptr, 0), cheri_getlen(ptr));
+ #endif
+-
+-	mrs_lock(&app_quarantine_lock);
+-	quarantine_insert(app_quarantine, ins, cheri_getlen(ins));
+-	mrs_unlock(&app_quarantine_lock);
+-
+-	check_and_perform_flush(true);
++	return;
+ }
+ 
+ static void *
+@@ -1943,7 +1789,7 @@ mrs_offload_thread(void *arg)
+ 
+ 		mrs_debug_printf("mrs_offload_thread: flushing validated quarantine size %zu\n", offload_quarantine.size);
+ 
+-		quarantine_revoke(&offload_quarantine);
++		quarantine_revoke();
+ 
+ #ifdef PRINT_CAPREVOKE_MRS
+ 		mrs_printf("mrs_offload_thread: application quarantine's (unvalidated) size "
+diff --git a/lib/libc/stdlib/u_subr_unit.c b/lib/libc/stdlib/u_subr_unit.c
+new file mode 100644
+index 000000000000..b75060fa9e08
+--- /dev/null
++++ b/lib/libc/stdlib/u_subr_unit.c
+@@ -0,0 +1,1463 @@
++/*-
++ * SPDX-License-Identifier: BSD-2-Clause
++ *
++ * Copyright (c) 2004 Poul-Henning Kamp
++ * All rights reserved.
++ *
++ * Redistribution and use in source and binary forms, with or without
++ * modification, are permitted provided that the following conditions
++ * are met:
++ * 1. Redistributions of source code must retain the above copyright
++ *    notice, this list of conditions and the following disclaimer.
++ * 2. Redistributions in binary form must reproduce the above copyright
++ *    notice, this list of conditions and the following disclaimer in the
++ *    documentation and/or other materials provided with the distribution.
++ *
++ * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
++ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
++ * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
++ * ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
++ * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
++ * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
++ * OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
++ * HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
++ * LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
++ * OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
++ * SUCH DAMAGE.
++ *
++ *
++ * Unit number allocation functions.
++ *
++ * These functions implement a mixed run-length/bitmap management of unit
++ * number spaces in a very memory efficient manner.
++ *
++ * Allocation policy is always lowest free number first.
++ *
++ * A return value of -1 signals that no more unit numbers are available.
++ *
++ * There is no cost associated with the range of unitnumbers, so unless
++ * the resource really is finite, specify INT_MAX to new_unrhdr() and
++ * forget about checking the return value.
++ *
++ * If a mutex is not provided when the unit number space is created, a
++ * default global mutex is used.  The advantage to passing a mutex in, is
++ * that the alloc_unrl() function can be called with the mutex already
++ * held (it will not be released by alloc_unrl()).
++ *
++ * The allocation function alloc_unr{l}() never sleeps (but it may block on
++ * the mutex of course).
++ *
++ * Freeing a unit number may require allocating memory, and can therefore
++ * sleep so the free_unr() function does not come in a pre-locked variant.
++ *
++ * A userland test program is included.
++ *
++ * Memory usage is a very complex function of the exact allocation
++ * pattern, but always very compact:
++ *    * For the very typical case where a single unbroken run of unit
++ *      numbers are allocated 44 bytes are used on i386.
++ *    * For a unit number space of 1000 units and the random pattern
++ *      in the usermode test program included, the worst case usage
++ *	was 252 bytes on i386 for 500 allocated and 500 free units.
++ *    * For a unit number space of 10000 units and the random pattern
++ *      in the usermode test program included, the worst case usage
++ *	was 798 bytes on i386 for 5000 allocated and 5000 free units.
++ *    * The worst case is where every other unit number is allocated and
++ *	the rest are free.  In that case 44 + N/4 bytes are used where
++ *	N is the number of the highest unit allocated.
++ */
++
++#include <sys/param.h>
++#include <sys/types.h>
++#include <sys/_unrhdr.h>
++#include <bitstring.h>
++#include <err.h>
++#include <errno.h>
++#include <getopt.h>
++#include <stdbool.h>
++#include <stdio.h>
++#include <stdlib.h>
++#include <string.h>
++#include <stdint.h>
++#include <stdatomic.h>
++#include "u_subr_unit.h"
++
++#ifdef __CHERI_PURE_CAPABILITY__
++#include <cheri/cheri.h>
++#include <cheri/cheric.h>
++#include <cheri/revoke.h>
++#endif
++
++
++#ifdef __CHERI_PURE_CAPABILITY__
++void* global_sealing_bitmap = NULL;
++int global_sealing_bitmap_size = 0;
++bool global_cheri_otypes_initialized = false;
++struct cheri_revoke_info *cri;
++struct unrhdr cheri_otypes;
++struct unrhdr* cheri_otypes_ptr = NULL;
++struct unrhdr*
++get_global_cheri_otypes(void)
++{
++	if (!global_cheri_otypes_initialized) {
++		cheri_otypes_ptr = &cheri_otypes;
++		init_unrhdr(cheri_otypes_ptr, CHERI_OTYPE_USER_MIN,
++		    CHERI_OTYPE_USER_MAX, NULL);
++		global_cheri_otypes_initialized = true;
++	}
++	return cheri_otypes_ptr;
++}
++#endif
++
++void*
++get_global_sealing_bitmap(int* size_out)
++{
++#ifdef __CHERI_PURE_CAPABILITY__
++	if (global_sealing_bitmap == NULL) {
++		if (cheri_revoke_get_shadow(CHERI_CC_SEALING_BITMAP, NULL,
++			&global_sealing_bitmap) != 0) {
++			if (size_out)
++				*size_out = 0;
++			return NULL;
++		}
++		global_sealing_bitmap_size = __builtin_cheri_length_get(global_sealing_bitmap);
++	}
++#endif
++	if (size_out)
++		*size_out = global_sealing_bitmap_size;
++	return global_sealing_bitmap;
++}
++
++#define KASSERT(cond, arg) \
++	do { \
++		if (!(cond)) { \
++			printf arg; \
++			abort(); \
++		} \
++	} while (0)
++
++static int no_alloc;
++#define Malloc(foo) _Malloc(foo, __LINE__)
++static void *
++_Malloc(size_t foo, int line)
++{
++
++	KASSERT(no_alloc == 0, ("malloc in wrong place() line %d", line));
++	return (mrs_calloc_unr(foo, 1));
++}
++#define Free(foo) free(foo)
++
++struct unrhdr;
++
++#define	UNR_NO_MTX	((void *)(uintptr_t)-1)
++
++struct mtx {
++	atomic_flag state;
++};
++
++static struct mtx unitmtx = { ATOMIC_FLAG_INIT };
++
++static void
++mtx_lock(struct mtx *mp)
++{
++    while (atomic_flag_test_and_set(&mp->state)) {
++        // spin until the flag is cleared
++    }
++}
++
++static void
++mtx_unlock(struct mtx *mp)
++{
++	atomic_flag_clear(&mp->state);
++}
++
++#define MA_OWNED	9
++
++static void
++mtx_assert(struct mtx *mp, int flag)
++{
++	if (flag == MA_OWNED) {
++		KASSERT(atomic_flag_test_and_set(&mp->state), ("mtx_assert(MA_OWNED) not true"));
++	}
++}
++
++#define CTASSERT(foo)
++#define WITNESS_WARN(flags, lock, fmt, ...)	(void)0
++
++/*
++ * This is our basic building block.
++ *
++ * It can be used in three different ways depending on the value of the ptr
++ * element:
++ *     If ptr is NULL, it represents a run of free items.
++ *     If ptr points to the unrhdr it represents a run of allocated items.
++ *     Otherwise it points to a bitstring of allocated items.
++ *
++ * For runs the len field is the length of the run.
++ * For bitmaps the len field represents the number of allocated items.
++ *
++ * The bitmap is the same size as struct unr to optimize memory management.
++ *
++ * Two special ranges are not covered by unrs:
++ * - at the start of the allocator space, all elements in [low, low + first)
++ *   are allocated;
++ * - at the end of the allocator space, all elements in [high - last, high]
++ *   are free.
++ */
++struct unr {
++	TAILQ_ENTRY(unr)	list;
++	u_int			len;
++	void			*ptr;
++};
++
++struct unrb {
++	bitstr_t		map[sizeof(struct unr) / sizeof(bitstr_t)];
++};
++
++CTASSERT((sizeof(struct unr) % sizeof(bitstr_t)) == 0);
++
++/* Number of bits we can store in the bitmap */
++#define NBITS (NBBY * sizeof(((struct unrb *)NULL)->map))
++
++static inline bool
++is_bitmap(struct unrhdr *uh, struct unr *up)
++{
++	return (up->ptr != uh && up->ptr != NULL);
++}
++
++/* Is the unrb empty in at least the first len bits? */
++static inline bool
++ub_empty(struct unrb *ub, int len) {
++	int first_set;
++
++	bit_ffs(ub->map, len, &first_set);
++	return (first_set == -1);
++}
++
++/* Is the unrb full?  That is, is the number of set elements equal to len? */
++static inline bool
++ub_full(struct unrb *ub, int len)
++{
++	int first_clear;
++
++	bit_ffc(ub->map, len, &first_clear);
++	return (first_clear == -1);
++}
++
++/*
++ * start: ipos = -1, upos = NULL;
++ * end:   ipos = -1, upos = uh
++ */
++struct unrhdr_iter {
++	struct unrhdr *uh;
++	int ipos;
++	int upos_first_item;
++	void *upos;
++};
++
++void *
++create_iter_unr(struct unrhdr *uh)
++{
++	struct unrhdr_iter *iter;
++
++	iter = Malloc(sizeof(*iter));
++	iter->ipos = -1;
++	iter->uh = uh;
++	iter->upos = NULL;
++	iter->upos_first_item = -1;
++	return (iter);
++}
++
++static void
++next_iter_unrl(struct unrhdr *uh, struct unrhdr_iter *iter)
++{
++	struct unr *up;
++	struct unrb *ub;
++	u_int y;
++	int c;
++
++	if (iter->ipos == -1) {
++		if (iter->upos == uh)
++			return;
++		y = uh->low - 1;
++		if (uh->first == 0) {
++			up = TAILQ_FIRST(&uh->head);
++			if (up == NULL) {
++				iter->upos = uh;
++				return;
++			}
++			iter->upos = up;
++			if (up->ptr == NULL)
++				iter->upos = NULL;
++			else
++				iter->upos_first_item = uh->low;
++		}
++	} else {
++		y = iter->ipos;
++	}
++
++	up = iter->upos;
++
++	/* Special case for the compacted [low, first) run. */
++	if (up == NULL) {
++		if (y + 1 < uh->low + uh->first) {
++			iter->ipos = y + 1;
++			return;
++		}
++		up = iter->upos = TAILQ_FIRST(&uh->head);
++		iter->upos_first_item = uh->low + uh->first;
++	}
++
++	for (;;) {
++		if (y + 1 < iter->upos_first_item + up->len) {
++			if (up->ptr == uh) {
++				iter->ipos = y + 1;
++				return;
++			} else if (is_bitmap(uh, up)) {
++				ub = up->ptr;
++				bit_ffs_at(&ub->map[0],
++				    y + 1 - iter->upos_first_item,
++				    up->len, &c);
++				if (c != -1) {
++					iter->ipos = iter->upos_first_item + c;
++					return;
++				}
++			}
++		}
++		iter->upos_first_item += up->len;
++		y = iter->upos_first_item - 1;
++		up = iter->upos = TAILQ_NEXT((struct unr *)iter->upos, list);
++		if (iter->upos == NULL) {
++			iter->ipos = -1;
++			iter->upos = uh;
++			return;
++		}
++	}
++}
++
++/*
++ * returns -1 on end, otherwise the next element
++ */
++int
++next_iter_unr(void *handle)
++{
++	struct unrhdr *uh;
++	struct unrhdr_iter *iter;
++
++	iter = handle;
++	uh = iter->uh;
++	if (uh->mtx != NULL)
++		mtx_lock(uh->mtx);
++	next_iter_unrl(uh, iter);
++	if (uh->mtx != NULL)
++		mtx_unlock(uh->mtx);
++	return (iter->ipos);
++}
++
++void
++free_iter_unr(void *handle)
++{
++	Free(handle);
++}
++
++#if defined(DIAGNOSTIC) || !defined(_KERNEL)
++#ifndef __diagused
++#define	__diagused
++#endif
++
++/*
++ * Consistency check function.
++ *
++ * Checks the internal consistency as well as we can.
++ *
++ * Called at all boundaries of this API.
++ */
++void check_unrhdr(struct unrhdr *uh __unused, int line __unused)
++{
++#if !CC_DEBUG
++	return;
++#else
++	struct unr *up;
++	struct unrb *ub;
++	int w;
++	u_int y __diagused, z __diagused;
++
++	y = uh->first;
++	z = 0;
++	
++	//int available = 0;
++	//int claimed = 0; 
++	//int bitmap = 0;
++	//int counter = 0;
++
++	TAILQ_FOREACH(up, &uh->head, list) {
++		z++;
++		if (is_bitmap(uh, up)) {
++			ub = up->ptr;
++			KASSERT (up->len <= NBITS,
++			    ("UNR inconsistency: len %u max %zd (line %d)\n",
++			    up->len, NBITS, line));
++			z++;
++			w = 0;
++			bit_count(ub->map, 0, up->len, &w);
++			y += w;
++		} else if (up->ptr != NULL){
++			y += up->len;
++		}else{
++		}
++	}
++	if(z != uh->alloc || y != uh->busy){
++		printf_uh(uh);
++	}
++	KASSERT (z == uh->alloc,
++	    ("UNR inconsistency: chunks %u found %u (line %d)\n",
++	    uh->alloc, z, line));
++	KASSERT (y == uh->busy,
++	    ("UNR inconsistency: items %u found %u (line %d)\n",
++	    uh->busy, y, line));
++#endif
++}
++
++#else
++
++static __inline void
++check_unrhdr(struct unrhdr *uh __unused, int line __unused)
++{
++
++}
++
++#endif
++
++/*
++ * Userland memory management.  Just use calloc and keep track of how
++ * many elements we have allocated for check_unrhdr().
++ */
++
++static __inline void *
++new_unr(struct unrhdr *uh, void **p1, void **p2)
++{
++	void *p;
++
++	uh->alloc++;
++	KASSERT(*p1 != NULL || *p2 != NULL, ("Out of cached memory"));
++	if (*p1 != NULL) {
++		p = *p1;
++		*p1 = NULL;
++		return (p);
++	} else {
++		p = *p2;
++		*p2 = NULL;
++		return (p);
++	}
++}
++
++static __inline void
++delete_unr(struct unrhdr *uh, void *ptr)
++{
++	struct unr *up;
++
++	uh->alloc--;
++	up = ptr;
++	TAILQ_INSERT_TAIL(&uh->ppfree, up, list);
++}
++
++void
++clean_unrhdrl(struct unrhdr *uh)
++{
++	struct unr *up;
++
++	if (uh->mtx != NULL)
++		mtx_assert(uh->mtx, MA_OWNED);
++	while ((up = TAILQ_FIRST(&uh->ppfree)) != NULL) {
++		TAILQ_REMOVE(&uh->ppfree, up, list);
++		if (uh->mtx != NULL)
++			mtx_unlock(uh->mtx);
++		Free(up);
++		if (uh->mtx != NULL)
++			mtx_lock(uh->mtx);
++	}
++
++}
++void
++clean_unrhdr(struct unrhdr *uh)
++{
++
++	if (uh->mtx != NULL)
++		mtx_lock(uh->mtx);
++	clean_unrhdrl(uh);
++	if (uh->mtx != NULL)
++		mtx_unlock(uh->mtx);
++}
++
++void
++init_unrhdr(struct unrhdr *uh, int low, int high, struct mtx *mutex)
++{
++
++	KASSERT(low >= 0 && low <= high,
++	    ("UNR: use error: new_unrhdr(%d, %d)", low, high));
++	if (mutex == UNR_NO_MTX)
++		uh->mtx = NULL;
++	else if (mutex != NULL)
++		uh->mtx = mutex;
++	else
++		uh->mtx = &unitmtx;
++	
++	TAILQ_INIT(&uh->head);
++	TAILQ_INIT(&uh->ppfree);
++	uh->low = low;
++	uh->high = high;
++	uh->first = 0;
++	uh->last = 1 + (high - low);
++	uh->busy = 0;
++	uh->alloc = 0;
++	check_unrhdr(uh, __LINE__);
++}
++
++/*
++ * Allocate a new unrheader set.
++ *
++ * Highest and lowest valid values given as parameters.
++ */
++
++struct unrhdr *
++new_unrhdr(int low, int high, struct mtx *mutex)
++{
++	struct unrhdr *uh;
++
++	uh = Malloc(sizeof *uh);
++	init_unrhdr(uh, low, high, mutex);
++	return (uh);
++}
++
++void
++delete_unrhdr(struct unrhdr *uh)
++{
++
++	check_unrhdr(uh, __LINE__);
++	KASSERT(uh->busy == 0, ("unrhdr has %u allocations", uh->busy));
++	KASSERT(uh->alloc == 0, ("UNR memory leak in delete_unrhdr"));
++	KASSERT(TAILQ_FIRST(&uh->ppfree) == NULL,
++	    ("unrhdr has postponed item for free"));
++	Free(uh);
++}
++
++void
++clear_unrhdr(struct unrhdr *uh)
++{
++	struct unr *up, *uq;
++
++	KASSERT(TAILQ_EMPTY(&uh->ppfree),
++	    ("unrhdr has postponed item for free"));
++	TAILQ_FOREACH_SAFE(up, &uh->head, list, uq) {
++		if (up->ptr != uh) {
++			Free(up->ptr);
++		}
++		Free(up);
++	}
++	uh->busy = 0;
++	uh->alloc = 0;
++	init_unrhdr(uh, uh->low, uh->high, uh->mtx);
++
++	check_unrhdr(uh, __LINE__);
++}
++
++void copy_unrhdr(struct unrhdr *old_uh, struct unrhdr *new_uh){
++	struct unr* up;
++	check_unrhdr(old_uh, 0);
++	new_uh->head = old_uh->head;
++	new_uh->low = old_uh->low;
++	new_uh->high = old_uh->high;
++	new_uh->busy = old_uh->busy;
++	new_uh->alloc = old_uh->alloc;
++	new_uh->first = old_uh->first;
++	new_uh->last = old_uh->last;
++	TAILQ_FOREACH(up, &new_uh->head, list) {
++		if(up->ptr==old_uh){
++			up->ptr=new_uh;
++		}
++	}
++	check_unrhdr(new_uh, 0);
++	return;
++}
++
++/*
++ * Look for sequence of items which can be combined into a bitmap, if
++ * multiple are present, take the one which saves most memory.
++ *
++ * Return (1) if a sequence was found to indicate that another call
++ * might be able to do more.  Return (0) if we found no suitable sequence.
++ *
++ * NB: called from alloc_unr(), no new memory allocation allowed.
++ */
++
++/*
++ * See if a given unr should be collapsed with a neighbor.
++ *
++ * NB: called from alloc_unr(), no new memory allocation allowed.
++ */
++
++static void
++collapse_unr(struct unrhdr *uh, struct unr *up)
++{
++	struct unr *upp;
++	struct unrb *ub;
++	/* If bitmap is all set or clear, change it to runlength */
++	if (is_bitmap(uh, up)) {
++		ub = up->ptr;
++		if (ub_full(ub, up->len)) {
++			delete_unr(uh, up->ptr);
++			up->ptr = uh;
++		} else if (ub_empty(ub, up->len)) {
++			delete_unr(uh, up->ptr);
++			up->ptr = NULL;
++		}
++	}
++	/* If nothing left in runlength, delete it */
++	if (up->len == 0) {
++		upp = TAILQ_PREV(up, unrhd, list);
++		if (upp == NULL)
++			upp = TAILQ_NEXT(up, list);
++		TAILQ_REMOVE(&uh->head, up, list);
++		delete_unr(uh, up);
++		up = upp;
++	}
++
++	/* If we have "hot-spot" still, merge with neighbor if possible */
++	if (up != NULL) {
++		upp = TAILQ_PREV(up, unrhd, list);
++		if (upp != NULL && up->ptr == upp->ptr) {
++			up->len += upp->len;
++			TAILQ_REMOVE(&uh->head, upp, list);
++			delete_unr(uh, upp);
++			}
++		upp = TAILQ_NEXT(up, list);
++		if (upp != NULL && up->ptr == upp->ptr) {
++			up->len += upp->len;
++			TAILQ_REMOVE(&uh->head, upp, list);
++			delete_unr(uh, upp);
++		}
++	}
++
++	/* Merge into ->first if possible */
++	upp = TAILQ_FIRST(&uh->head);
++	if (upp != NULL && upp->ptr == uh) {
++		uh->first += upp->len;
++		TAILQ_REMOVE(&uh->head, upp, list);
++		delete_unr(uh, upp);
++		if (up == upp)
++			up = NULL;
++	}
++
++	/* Merge into ->last if possible */
++	upp = TAILQ_LAST(&uh->head, unrhd);
++	if (upp != NULL && upp->ptr == NULL) {
++		uh->last += upp->len;
++		TAILQ_REMOVE(&uh->head, upp, list);
++		delete_unr(uh, upp);
++		if (up == upp)
++			up = NULL;
++	}
++
++	/* Try to make bitmaps */
++	//while (optimize_unr(uh))
++	//	continue;
++}
++
++/*
++ * Allocate a free unr.
++ */
++int
++alloc_unrl(struct unrhdr *uh)
++{
++	struct unr *up;
++	struct unrb *ub;
++	u_int x;
++	int y;
++
++	if (uh->mtx != NULL)
++		mtx_assert(uh->mtx, MA_OWNED);
++	check_unrhdr(uh, __LINE__);
++	x = uh->low + uh->first;
++
++	up = TAILQ_FIRST(&uh->head);
++
++	/*
++	 * If we have an ideal split, just adjust the first+last
++	 */
++	if (up == NULL && uh->last > 0) {
++		uh->first++;
++		uh->last--;
++		uh->busy++;
++		if(x<0){
++			printf("error1 %d\n", x);
++		}
++		return (x);
++	}
++
++	/*
++	 * We can always allocate from the first list element, so if we have
++	 * nothing on the list, we must have run out of unit numbers.
++	 */
++	if (up == NULL)
++		return (-1);
++
++	KASSERT(up->ptr != uh, ("UNR first element is allocated"));
++
++	if (up->ptr == NULL) {	/* free run */
++		uh->first++;
++		up->len--;
++	} else {		/* bitmap */
++		ub = up->ptr;
++		bit_ffc(ub->map, up->len, &y);
++		KASSERT(y != -1, ("UNR corruption: No clear bit in bitmap."));
++		bit_set(ub->map, y);
++		x += y;
++	}
++	uh->busy++;
++	collapse_unr(uh, up);
++	if(x<0){
++		printf("error2 %d\n", x);
++	}
++	return (x);
++}
++
++int
++alloc_unr(struct unrhdr *uh)
++{
++	int i;
++
++	if (uh->mtx != NULL)
++		mtx_lock(uh->mtx);
++	i = alloc_unrl(uh);
++	clean_unrhdrl(uh);
++	if (uh->mtx != NULL)
++		mtx_unlock(uh->mtx);
++	return (i);
++}
++
++static int
++alloc_unr_specificl(struct unrhdr *uh, u_int item, void **p1, void **p2)
++{
++	struct unr *up, *upn;
++	struct unrb *ub;
++	u_int i, last, tl;
++
++	if (uh->mtx != NULL)
++		mtx_assert(uh->mtx, MA_OWNED);
++
++	if (item < uh->low + uh->first || item > uh->high)
++		return (-1);
++
++	up = TAILQ_FIRST(&uh->head);
++	/* Ideal split. */
++	if (up == NULL && item - uh->low == uh->first) {
++		uh->first++;
++		uh->last--;
++		uh->busy++;
++		check_unrhdr(uh, __LINE__);
++		return (item);
++	}
++
++	i = item - uh->low - uh->first;
++
++	if (up == NULL) {
++		up = new_unr(uh, p1, p2);
++		up->ptr = NULL;
++		up->len = i;
++		TAILQ_INSERT_TAIL(&uh->head, up, list);
++		up = new_unr(uh, p1, p2);
++		up->ptr = uh;
++		up->len = 1;
++		TAILQ_INSERT_TAIL(&uh->head, up, list);
++		uh->last = uh->high - uh->low - i;
++		uh->busy++;
++		check_unrhdr(uh, __LINE__);
++		return (item);
++	} else {
++		/* Find the item which contains the unit we want to allocate. */
++		TAILQ_FOREACH(up, &uh->head, list) {
++			if (up->len > i)
++				break;
++			i -= up->len;
++		}
++	}
++
++	if (up == NULL) {
++		if (i > 0) {
++			up = new_unr(uh, p1, p2);
++			up->ptr = NULL;
++			up->len = i;
++			TAILQ_INSERT_TAIL(&uh->head, up, list);
++		}
++		up = new_unr(uh, p1, p2);
++		up->ptr = uh;
++		up->len = 1;
++		TAILQ_INSERT_TAIL(&uh->head, up, list);
++		goto done;
++	}
++
++	if (is_bitmap(uh, up)) {
++		ub = up->ptr;
++		if (bit_test(ub->map, i) == 0) {
++			bit_set(ub->map, i);
++			goto done;
++		} else
++			return (-1);
++	} else if (up->ptr == uh)
++		return (-1);
++
++	KASSERT(up->ptr == NULL,
++	    ("alloc_unr_specificl: up->ptr != NULL (up=%p)", up));
++
++	/* Split off the tail end, if any. */
++	tl = up->len - (1 + i);
++	if (tl > 0) {
++		upn = new_unr(uh, p1, p2);
++		upn->ptr = NULL;
++		upn->len = tl;
++		TAILQ_INSERT_AFTER(&uh->head, up, upn, list);
++	}
++
++	/* Split off head end, if any */
++	if (i > 0) {
++		upn = new_unr(uh, p1, p2);
++		upn->len = i;
++		upn->ptr = NULL;
++		TAILQ_INSERT_BEFORE(up, upn, list);
++	}
++	up->len = 1;
++	up->ptr = uh;
++
++done:
++	last = uh->high - uh->low - (item - uh->low);
++	if (uh->last > last)
++		uh->last = last;
++	uh->busy++;
++	collapse_unr(uh, up);
++	check_unrhdr(uh, __LINE__);
++	return (item);
++}
++
++int
++alloc_unr_specific(struct unrhdr *uh, u_int item)
++{
++	void *p1, *p2;
++	int i;
++
++	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, NULL, "alloc_unr_specific");
++
++	p1 = Malloc(sizeof(struct unr));
++	p2 = Malloc(sizeof(struct unr));
++
++	if (uh->mtx != NULL)
++		mtx_lock(uh->mtx);
++	i = alloc_unr_specificl(uh, item, &p1, &p2);
++	if (uh->mtx != NULL)
++		mtx_unlock(uh->mtx);
++
++	if (p1 != NULL)
++		Free(p1);
++	if (p2 != NULL)
++		Free(p2);
++
++	return (i);
++}
++
++/*
++ * Free a unr.
++ *
++ * If we can save unrs by using a bitmap, do so.
++ */
++static void
++free_unrl(struct unrhdr *uh, u_int item, void **p1, void **p2)
++{
++	struct unr *up, *upp, *upn;
++	struct unrb *ub;
++	u_int pl;
++
++	KASSERT(item >= uh->low && item <= uh->high,
++	    ("UNR: free_unr(%u) out of range [%u...%u]",
++	     item, uh->low, uh->high));
++	check_unrhdr(uh, __LINE__);
++	item -= uh->low;
++	upp = TAILQ_FIRST(&uh->head);
++	/*
++	 * Freeing in the ideal split case
++	 */
++	if (item + 1 == uh->first && upp == NULL) {
++		uh->last++;
++		uh->first--;
++		uh->busy--;
++		check_unrhdr(uh, __LINE__);
++		return;
++	}
++	/*
++ 	 * Freeing in the ->first section.  Create a run starting at the
++	 * freed item.  The code below will subdivide it.
++	 */
++	if (item < uh->first) {
++		up = new_unr(uh, p1, p2);
++		up->ptr = uh;
++		up->len = uh->first - item;
++		TAILQ_INSERT_HEAD(&uh->head, up, list);
++		uh->first -= up->len;
++	}
++
++	item -= uh->first;
++
++	/* Find the item which contains the unit we want to free */
++	TAILQ_FOREACH(up, &uh->head, list) {
++		if (up->len > item)
++			break;
++		item -= up->len;
++	}
++
++	/* Handle bitmap items */
++	if (is_bitmap(uh, up)) {
++		ub = up->ptr;
++
++		KASSERT(bit_test(ub->map, item) != 0,
++		    ("UNR: Freeing free item %d (bitmap)\n", item));
++		bit_clear(ub->map, item);
++		uh->busy--;
++		collapse_unr(uh, up);
++		return;
++	}
++
++	KASSERT(up->ptr == uh, ("UNR Freeing free item %d (run))\n", item));
++
++	/* Just this one left, reap it */
++	if (up->len == 1) {
++		up->ptr = NULL;
++		uh->busy--;
++		collapse_unr(uh, up);
++		return;
++	}
++
++	/* Check if we can shift the item into the previous 'free' run */
++	upp = TAILQ_PREV(up, unrhd, list);
++	if (item == 0 && upp != NULL && upp->ptr == NULL) {
++		upp->len++;
++		up->len--;
++		uh->busy--;
++		collapse_unr(uh, up);
++		return;
++	}
++
++	/* Check if we can shift the item to the next 'free' run */
++	upn = TAILQ_NEXT(up, list);
++	if (item == up->len - 1 && upn != NULL && upn->ptr == NULL) {
++		upn->len++;
++		up->len--;
++		uh->busy--;
++		collapse_unr(uh, up);
++		return;
++	}
++
++	/* Split off the tail end, if any. */
++	pl = up->len - (1 + item);
++	if (pl > 0) {
++		upp = new_unr(uh, p1, p2);
++		upp->ptr = uh;
++		upp->len = pl;
++		TAILQ_INSERT_AFTER(&uh->head, up, upp, list);
++	}
++
++	/* Split off head end, if any */
++	if (item > 0) {
++		upp = new_unr(uh, p1, p2);
++		upp->len = item;
++		upp->ptr = uh;
++		TAILQ_INSERT_BEFORE(up, upp, list);
++	}
++	up->len = 1;
++	up->ptr = NULL;
++	uh->busy--;
++	collapse_unr(uh, up);
++}
++
++void
++free_unr(struct unrhdr *uh, u_int item)
++{
++	void *p1, *p2;
++
++	WITNESS_WARN(WARN_GIANTOK | WARN_SLEEPOK, NULL, "free_unr");
++	p1 = Malloc(sizeof(struct unr));
++	p2 = Malloc(sizeof(struct unr));
++	if (uh->mtx != NULL)
++		mtx_lock(uh->mtx);
++	free_unrl(uh, item, &p1, &p2);
++	clean_unrhdrl(uh);
++	if (uh->mtx != NULL)
++		mtx_unlock(uh->mtx);
++	if (p1 != NULL)
++		Free(p1);
++	if (p2 != NULL)
++		Free(p2);
++}
++
++static u_int64_t get_sealing_word(u_int64_t* sealing_bitmap, int index){
++	KASSERT(index%64==0, ("index not at start of word"));
++	int word_offset = index/64;
++	return sealing_bitmap[word_offset];
++}
++
++static char get_sealing_byte(u_int64_t sealing_bitmap_word, int index){
++	KASSERT((size_t)index < sizeof(u_int64_t), ("sealing bitmap byte out of bounds"));
++	return (char)((sealing_bitmap_word>>(index*8))&255);
++}
++
++static int get_sealing_bit(u_int64_t sealing_bitmap_word, int index){
++	KASSERT((size_t)index < sizeof(u_int64_t)*8, ("sealing bitmap bit out of bounds"));
++	return (int)((sealing_bitmap_word>>index)&1);
++}
++
++//create the bitmap by reusing the first two elememnts
++//returns 1 if the last run in the window is fully removed
++static int form_bitmap(struct unrhdr* uh, struct unr* prev_unr __unused, struct unr* new_unr __unused, struct lb_window* lookback_window){
++	int ret = 0;
++
++	//transform first run into a bitmap
++	struct unr* firstrun = lookback_window->back_pointer;
++
++	int bitmap_size = firstrun->len;
++	struct unr* cur_run = TAILQ_NEXT(firstrun, list);
++	KASSERT(cur_run!=NULL, ("window should contain more than one run"));
++	lookback_window->alloc_count--;
++	lookback_window->len-=firstrun->len;
++	TAILQ_REMOVE(&uh->head, firstrun, list);
++
++	int type = !(firstrun->ptr == NULL);
++	struct unrb* new_bitmap = (struct unrb*)firstrun;
++	if(type){
++		bit_nset(new_bitmap->map, 0, bitmap_size-1);
++	}else{
++		bit_nclear(new_bitmap->map, 0, bitmap_size-1);
++	}
++
++
++	struct unr* second_run = cur_run; //keep track of second run, we will reuse this to point to the bitmap
++	//iterate over the runs in the window to place their bits in the bitmap
++	while(cur_run!=lookback_window->fowards_pointer){
++		type = !(cur_run->ptr == NULL);
++		if(type){
++			bit_nset(new_bitmap->map, bitmap_size, bitmap_size+cur_run->len-1);
++		}else{
++			bit_nclear(new_bitmap->map, bitmap_size, bitmap_size+cur_run->len-1);
++		}
++		bitmap_size += cur_run->len;
++
++		struct unr* u = cur_run;
++		cur_run = TAILQ_NEXT(cur_run, list);
++		KASSERT(cur_run!=NULL, ("window should contain more than two runs"));
++
++		lookback_window->alloc_count--;
++		lookback_window->len-=u->len;
++		if(u!=second_run){
++			TAILQ_REMOVE(&uh->head, u, list); //remove every run in the window except the first second and last
++			delete_unr(uh, u);
++		}
++	}
++	//this last run may not fit fully in the bitmap
++	int leftover_size = sizeof(struct unrb)*8-bitmap_size;
++	lookback_window->len-=leftover_size;
++	KASSERT(leftover_size>0, ("There should still be some space for at least part of the last run, leftover size: %d", leftover_size));
++	type = !(cur_run->ptr == NULL);
++	if(type){
++		bit_nset(new_bitmap->map, bitmap_size, bitmap_size+leftover_size-1);
++	}else{
++		bit_nclear(new_bitmap->map, bitmap_size, bitmap_size+leftover_size-1);
++	}
++
++	cur_run->len -= leftover_size;
++
++	KASSERT(cur_run->len>=0, ("leftover run cannot have negative size"));
++	if(cur_run->len==0){
++		TAILQ_REMOVE(&uh->head, cur_run, list);//remove the last run if it fully falls in the window
++		delete_unr(uh, cur_run);
++		lookback_window->alloc_count--;
++		ret = 1;
++	}
++
++	second_run->len = sizeof(struct unrb)*8;
++	second_run->ptr = new_bitmap;
++	return ret;
++}
++
++//update the lookback window. if it gets big enhough and there are enough runs in the window, try to form a bitmap.
++static void try_form_bitmap(struct unrhdr* uh, struct unr* prev_unr, struct unr* new_unr, struct lb_window* lookback_window){
++	if(lookback_window->back_pointer==NULL){
++		KASSERT(lookback_window->fowards_pointer==NULL, ("back pointer and forward pointer shuold both be NULL or non-NULL"));
++		lookback_window->fowards_pointer = new_unr;
++		lookback_window->back_pointer = new_unr;
++		return;
++	}
++	KASSERT(prev_unr!=NULL, ("There should be a prev unr element if the back and foward pointers are non-NULL"));
++
++	if(prev_unr->len>=sizeof(struct unrb)*8){
++		lookback_window->alloc_count = 0;
++		lookback_window->len = 0;
++		lookback_window->fowards_pointer = new_unr;
++		lookback_window->back_pointer = new_unr;
++		return;
++	}
++	//the prev unr is now fully in the window so lets add it.
++	lookback_window->alloc_count++;
++	lookback_window->len += prev_unr->len;
++	if((size_t)lookback_window->len>=sizeof(struct unrb)*8){
++		if(lookback_window->alloc_count>3){
++			//there are mote then 3 runs in the window, lets create a bitmap
++			int res = form_bitmap(uh, prev_unr, new_unr, lookback_window);
++			if(res){
++				//the last run in the window was fully removed
++				lookback_window->back_pointer = new_unr;
++			}else{
++				//the last run in the window was not fully removed
++				lookback_window->back_pointer = prev_unr;
++			}
++		}else{
++			//trow away the last run in the window until the size is less then 512
++			while((size_t)lookback_window->len>=sizeof(struct unrb)*8){
++				lookback_window->alloc_count--;
++				lookback_window->len -= lookback_window->back_pointer->len;
++				lookback_window->back_pointer = TAILQ_NEXT(lookback_window->back_pointer, list);
++			}
++			KASSERT(lookback_window->alloc_count!=0||
++				lookback_window->back_pointer==new_unr, 
++				("The foward and backpointer should match if the window contains no runs back pointer: %p, foward pointer: %p\n", 
++					lookback_window->back_pointer, new_unr));
++		}
++	}
++	lookback_window->fowards_pointer = new_unr;
++	return;
++}
++
++//update the new_uh by increasing the size of the current unr or adding a new one. Returns the new_state
++static int update_new_uh(struct unrhdr* new_uh, int new_state, int old_state, int size, struct lb_window* lookback_window){
++	KASSERT(new_state==1||new_state==0, ("new state should be 0 or 1, new state: %d", new_state));
++	KASSERT(old_state==1||old_state==0, ("old state should be 0 or 1, old state: %d", old_state));
++	struct unr* u = TAILQ_LAST(&new_uh->head, unrhd);
++	if(new_state==1){
++		new_uh->busy += size;	
++		if(old_state==new_state){
++			if(u==NULL){
++				//this is still the first run so add size to the first run
++				new_uh->first += size;
++			}else{
++				//add size to the last unr object and make sure it is a run of claimed numbers
++				KASSERT(u->ptr==new_uh, ("state of current unr should be claimed, unr ptr: %p", u->ptr));
++				u->len += size;
++			}
++		}else{
++			struct unr* new_u = (struct unr*)Malloc(sizeof(struct unr));
++			//create new unr object of claimed numbers
++			if(u==NULL){
++				TAILQ_INSERT_HEAD(&new_uh->head, new_u, list);
++			}else{
++				TAILQ_INSERT_TAIL(&new_uh->head, new_u, list);
++			}
++			new_u->ptr = new_uh;
++			new_u->len = size;
++			
++			new_uh->alloc++;
++			try_form_bitmap(new_uh, u, new_u, lookback_window);
++		}
++	}else{
++		if(old_state==new_state){
++			//add size to the last unr object and make sure it is a run of available numbers
++			KASSERT(u->ptr==NULL, ("state of current unr should be claimed, unr ptr: %p", u->ptr));
++			u->len += size;
++		}else{
++			//create new run of available numbers
++			struct unr* new_u = (struct unr*)Malloc(sizeof(struct unr));
++			TAILQ_INSERT_TAIL(&new_uh->head, new_u, list);
++			new_u->ptr = NULL;
++			new_u->len = size;
++
++			new_uh->alloc++;
++			try_form_bitmap(new_uh, u, new_u, lookback_window);
++		}
++	}
++	new_uh->last -= size;
++	return new_state;
++}
++
++//go through a byte of the sealing bitmap and update the new_uh, return the new_state at the and
++static int iter_sealing_byte(struct unrhdr * new_uh, char sealing_byte, int old_state, struct lb_window* lookback_window){
++	if(~sealing_byte==0){
++		//all bits are 1
++		return update_new_uh(new_uh, 0, old_state, 8, lookback_window);
++	}
++	if(sealing_byte==0){
++		//all bits are 0
++		return update_new_uh(new_uh, 1, old_state, 8, lookback_window);
++	}
++	for(int i=0;i<8;i++){
++		int new_state = !((sealing_byte>>i)&1);
++		old_state = update_new_uh(new_uh, new_state, old_state, 1, lookback_window);
++	}
++	return old_state;
++}
++
++static int get_updated_state(struct unrhdr* uh, struct unr* current_unr, int index, int sealing_state){
++	int old_uh_state;
++	if(current_unr->ptr==NULL){
++		old_uh_state = 0;
++	}else if(current_unr->ptr==uh){
++		old_uh_state = 1;
++	}else{
++		struct unrb * ub = current_unr->ptr;
++		old_uh_state = bit_test(ub->map, index);
++	}
++	
++	if(old_uh_state==0){
++		KASSERT(sealing_state==0, ("invalid state reached, unit number not claimed, but it is sealed"));
++		return 0;
++	}
++	return !sealing_state;
++}
++
++static int unr_index_out_of_bounds(struct unrhdr* uh, struct unr* current_unr, int index){
++	if(current_unr->ptr==NULL || current_unr->ptr==uh){
++		return (u_int)index >= current_unr->len;
++	}
++	return (size_t)index >= sizeof(struct unrb)*8;
++}
++
++static void stage_two_free_many_unrl(struct unrhdr* old_uh, struct unrhdr* new_uh, u_int64_t* sealing_bitmap, struct unr* current_unr, int bitmap_index, int uh_state_new, struct lb_window* lookback_window){
++	//now lets update the rest of the unr that are not part of the first run
++	//the idea is the same, but we need to keep track of the state of the number in the original uh by iterating over it at the same pace as the sealing bitmap
++	KASSERT(current_unr!=NULL, ("There should be at least one unr object. I have no idea how you even got here."));
++	int unr_index = 0;
++	//take the current word in the sealing bitmap
++	u_int64_t sealing_bitmap_word = get_sealing_word(sealing_bitmap, (bitmap_index / 64) * 64);
++	
++	while(current_unr!=NULL){
++		int sealing_bit = get_sealing_bit(sealing_bitmap_word, bitmap_index%64);
++		int updated_state = get_updated_state(old_uh, current_unr, unr_index, sealing_bit);
++		uh_state_new = update_new_uh(new_uh, updated_state, uh_state_new, 1, lookback_window);
++
++		unr_index++;
++		if(unr_index_out_of_bounds(old_uh, current_unr, unr_index)){
++			unr_index = 0;
++			current_unr = TAILQ_NEXT(current_unr, list);
++			if(current_unr==NULL){
++				struct unr* last_unr = TAILQ_LAST(&new_uh->head, unrhd);
++				if(last_unr != NULL && last_unr->ptr==NULL){
++					//combine the last run and uh->last if the last run type is available
++					new_uh->last += last_unr->len;
++					TAILQ_REMOVE(&new_uh->head, last_unr, list);
++					delete_unr(new_uh, last_unr);
++				}
++				return;
++			}
++		}
++
++		bitmap_index++;
++		if(bitmap_index%64==0){
++			//update sealing word when crossing word boundary
++			sealing_bitmap_word = get_sealing_word(sealing_bitmap, bitmap_index);
++		}
++	}
++}
++
++
++
++/* given a pointer to the sealed bitmap (1="needs to be released", 0="stays claimed") return the the current bitmap index*/
++static int stage_one_free_many_unr(struct unrhdr* uh, struct unrhdr* new_uh, u_int64_t* sealing_bitmap, struct lb_window* lookback_window, int* final_state){
++
++	//first set all numbers that are part of the first run in the original uh in the new one based on the sealingbitmap
++	//the "state" of the numbers in the original uh is 1 while bitmap_index is less then uh->first so do this first as it is easier
++	const int first_run_size = uh->first;
++
++	unsigned int bitmap_index = uh->low;
++	int uh_state = 1; //0=available, 1=claimed
++	//iterate over the sealing bitmap
++	while((int)(bitmap_index-uh->low)<first_run_size){
++		if(bitmap_index%64){
++			//bitmap index is not word alligned, lets fix that
++			int word_alligned_bitmap_index = (bitmap_index / 64) * 64;
++			u_int64_t sealing_bitmap_word = get_sealing_word(sealing_bitmap, word_alligned_bitmap_index);
++			for(int i=bitmap_index%64;i<64;i++){
++				int updated_state = !((sealing_bitmap_word>>i)&1);	
++				uh_state = update_new_uh(new_uh, updated_state, uh_state, 1, lookback_window);
++				bitmap_index++;
++			}
++			continue;
++		}else if((int)(bitmap_index-uh->low+64) >= (first_run_size+1)){
++			//part of this word no longer maps to the first run
++			u_int64_t sealing_bitmap_word = get_sealing_word(sealing_bitmap, bitmap_index);
++			int leftover_bits = first_run_size - (bitmap_index-uh->low);
++			for(int i=0;i<leftover_bits;i++){
++				int updated_state = ~(sealing_bitmap_word>>i)&1;	
++				uh_state = update_new_uh(new_uh, updated_state, uh_state, 1, lookback_window);
++				bitmap_index++;
++			}
++			break;
++		}
++
++		u_int64_t sealing_bitmap_word = get_sealing_word(sealing_bitmap, bitmap_index);
++		if(~sealing_bitmap_word==0){
++			//all bits are 1
++			uh_state = update_new_uh(new_uh, 0, uh_state, 64, lookback_window);
++			bitmap_index += 64;
++			continue;
++		}
++		if(sealing_bitmap_word==0){
++			//all bits are 0
++			uh_state = update_new_uh(new_uh, 1, uh_state, 64, lookback_window);
++			bitmap_index += 64;
++			continue;
++		}
++
++		for(size_t i=0;i<sizeof(u_int64_t);i++){
++			char sealing_byte = get_sealing_byte(sealing_bitmap_word, (int)i);
++			uh_state = iter_sealing_byte(new_uh, sealing_byte, uh_state, lookback_window);
++			bitmap_index += 8;
++		}
++	}
++	KASSERT((int)(bitmap_index-uh->low) == first_run_size, ("relative bitmap index should match first run size at this point"));
++	*final_state = uh_state;
++	return bitmap_index;
++}
++
++
++void free_many_unr(struct unrhdr** old_uh_ptr, u_int64_t* sealing_bitmap, int should_free_old_uh){
++	struct lb_window lookback_window = {0};
++	struct unrhdr* new_uh = new_unrhdr((*old_uh_ptr)->low, (*old_uh_ptr)->high, NULL);
++
++	int uh_state_new;
++
++	//lets start by iterating thought the first run of the old unrhdr, this does not require a lock because this first run can only increase in length
++	int bitmap_index = stage_one_free_many_unr(*old_uh_ptr, new_uh, sealing_bitmap, &lookback_window, &uh_state_new);
++
++	//now we need to lock the unit number allocator before starting stage two
++	if ((*old_uh_ptr)->mtx != NULL)
++		mtx_lock((*old_uh_ptr)->mtx);
++	
++	KASSERT((*old_uh_ptr)->first >= bitmap_index-(*old_uh_ptr)->low, ("first run should not have become shorter, first run: %d, current relative index: %d", (*old_uh_ptr)->first, bitmap_index-(*old_uh_ptr)->low));
++
++	//it is possible that another thread increased the size of the first run during stage one, so lets complete it now we have a lock
++	u_int64_t sealing_bitmap_word = get_sealing_word(sealing_bitmap, (bitmap_index / 64) * 64);
++	while((bitmap_index-(*old_uh_ptr)->low) != (*old_uh_ptr)->first){
++		int bitoff = bitmap_index%64;
++		int updated_state = !((sealing_bitmap_word>>bitoff)&1);	
++		uh_state_new = update_new_uh(new_uh, updated_state, uh_state_new, 1, &lookback_window);
++		bitmap_index++;
++		if(bitmap_index%64==0){
++			sealing_bitmap_word = get_sealing_word(sealing_bitmap, bitmap_index);
++		}
++	}
++	KASSERT((*old_uh_ptr)->first == (bitmap_index-(*old_uh_ptr)->low), ("You should have reached the end of the first run now, first run: %d, current relative index: %d", (*old_uh_ptr)->first, (bitmap_index-(*old_uh_ptr)->low)));
++	
++	//if all claimed numbers are in the first run, skip the second stage
++	struct unr* first_unr = TAILQ_FIRST(&(*old_uh_ptr)->head);
++	if(first_unr!=NULL){
++		//if there are any unr objects, iterate though them as well
++		stage_two_free_many_unrl(*old_uh_ptr, new_uh, sealing_bitmap, first_unr, bitmap_index, uh_state_new, &lookback_window);
++	}else{
++		struct unr* last_unr = TAILQ_LAST(&new_uh->head, unrhd);
++		//combine the last run and uh->last if the last run type = "available"
++		if(last_unr != NULL && last_unr->ptr==NULL){
++			new_uh->last += last_unr->len;
++			TAILQ_REMOVE(&new_uh->head, last_unr, list);
++			delete_unr(new_uh, last_unr);
++		}
++	}
++
++	//clear the old unrhdr and replace it by the new one
++	struct unrhdr* temp = *old_uh_ptr;
++	*old_uh_ptr = new_uh;
++	check_unrhdr(*old_uh_ptr, __LINE__);
++	clean_unrhdrl(temp);
++	clear_unrhdr(temp);
++
++	//if the old unrhdr is heap allocated, free it
++	if(should_free_old_uh){
++		free(temp);
++	}
++
++	if (temp->mtx != NULL)
++		mtx_unlock(temp->mtx);
++	return;
++}
++
++void printf_uh(struct unrhdr* uh){
++	printf("address: %p,", uh);
++	printf("low: %d, ", uh->low);
++	printf("high: %d, ", uh->high);
++	printf("busy: %d, ", uh->busy);
++	printf("alloc: %d, ", uh->alloc);
++	printf("first: %d, ", uh->first);
++	printf("last: %d\n", uh->last);
++}
++
++
++
++
++#ifdef _KERNEL
++#include "opt_ddb.h"
++#ifdef DDB
++#include <ddb/ddb.h>
++#endif
++#endif
++
++#if (defined(_KERNEL) && defined(DDB)) || !defined(_KERNEL)
++
++#if !defined(_KERNEL)
++#define db_printf printf
++#endif
++
++
++
++void print_diff_from_iters(struct unrhdr *uh1, struct unrhdr *uh2) {
++	struct unrhdr_iter *it1 = create_iter_unr(uh1);
++	struct unrhdr_iter *it2 = create_iter_unr(uh2);
++    int num1 = next_iter_unr(it1);
++    int num2 = next_iter_unr(it2);
++
++    while (num1 != -1) {
++        while (num2 != -1 && num2 < num1) {
++            num2 = next_iter_unr(it2);
++        }
++        if (num2 == -1 || num1 < num2) {
++            printf("%d\n", num1); // print elements only in iter1
++            num1 = next_iter_unr(it1);
++        } else if (num1 == num2) {
++            // skip common
++            num1 = next_iter_unr(it1);
++            num2 = next_iter_unr(it2);
++        }
++    }
++}
++
++#endif
++
++#if defined(_KERNEL) && defined(DDB)
++DB_SHOW_COMMAND(unrhdr, unrhdr_print_unrhdr)
++{
++	if (!have_addr) {
++		db_printf("show unrhdr addr\n");
++		return;
++	}
++
++	print_unrhdr(DB_DATA_PTR(addr, struct unrhdr));
++}
++
++static void
++print_unrhdr_iter(struct unrhdr_iter *iter)
++{
++	db_printf("iter %p unrhdr %p ipos %d upos %p ufi %d\n",
++	    iter, iter->uh, iter->ipos, iter->upos, iter->upos_first_item);
++}
++
++DB_SHOW_COMMAND(unrhdr_iter, unrhdr_print_iter)
++{
++	if (!have_addr) {
++		db_printf("show unrhdr_iter addr\n");
++		return;
++	}
++
++	print_unrhdr_iter(DB_DATA_PTR(addr, struct unrhdr_iter));
++}
++#endif
+diff --git a/lib/libc/stdlib/u_subr_unit.h b/lib/libc/stdlib/u_subr_unit.h
+new file mode 100644
+index 000000000000..6f10a332ca44
+--- /dev/null
++++ b/lib/libc/stdlib/u_subr_unit.h
+@@ -0,0 +1,46 @@
++struct unrhdr;
++struct mtx;
++struct unr;
++
++/* Global shared state for cheri otypes across all allocators */
++extern struct unrhdr* cheri_otypes_ptr;
++extern struct unrhdr cheri_otypes;
++extern void* global_sealing_bitmap;
++extern int global_sealing_bitmap_size;
++extern bool global_cheri_otypes_initialized;
++extern struct cheri_revoke_info *cri;
++/* Get or initialize the global cheri_otypes allocator */
++struct unrhdr* get_global_cheri_otypes(void);
++/* Get or initialize the global sealing bitmap */
++void* get_global_sealing_bitmap(int* size_out);
++
++#define CC_DEBUG 0
++
++struct lb_window{
++    struct unr* back_pointer;
++    struct unr* fowards_pointer;
++    int len;
++    int alloc_count;
++};
++
++#define	UNR_NO_MTX	((void *)(uintptr_t)-1)
++struct unrhdr *new_unrhdr(int low, int high, struct mtx *mutex);
++
++void init_unrhdr(struct unrhdr *uh, int low, int high, struct mtx *mutex);
++void delete_unrhdr(struct unrhdr *uh);
++void clear_unrhdr(struct unrhdr *uh);
++void clean_unrhdr(struct unrhdr *uh);
++void clean_unrhdrl(struct unrhdr *uh);
++int alloc_unr(struct unrhdr *uh);
++int alloc_unr_specific(struct unrhdr *uh, u_int item);
++int alloc_unrl(struct unrhdr *uh);
++void free_unr(struct unrhdr *uh, u_int item);
++void *create_iter_unr(struct unrhdr *uh);
++int next_iter_unr(void *handle);
++void free_iter_unr(void *handle);
++void free_many_unr(struct unrhdr** uh, u_int64_t* sealing_bitmap, int should_free_old_uh);
++void* mrs_calloc_unr(size_t number, size_t size);
++void printf_uh(struct unrhdr* uh);
++void print_diff_from_iters(struct unrhdr *uh1, struct unrhdr *uh2);
++void check_unrhdr(struct unrhdr *uh, int line);
++void copy_unrhdr(struct unrhdr *old_uh, struct unrhdr *new_uh);
+\ No newline at end of file
+diff --git a/lib/libmalloc_simple/Makefile b/lib/libmalloc_simple/Makefile
+index 3d39499e076a..3d375cc27707 100644
+--- a/lib/libmalloc_simple/Makefile
++++ b/lib/libmalloc_simple/Makefile
+@@ -5,7 +5,10 @@
+ LIB=	malloc_simple
+ SHLIB_MAJOR=	1
+ 
+-SRCS=	heap.c malloc.c
++SRCS=	heap.c malloc.c u_subr_unit.c
++
++# Path to u_subr_unit.c in libc/stdlib
++.PATH: ${SRCTOP}/lib/libc/stdlib
+ 
+ .if ${MACHINE_ABI:Mpurecap} && ${MK_CHERI_CAPREVOKE} == "yes"
+ CFLAGS+=	-DCAPREVOKE
+diff --git a/lib/libmalloc_simple/malloc.c b/lib/libmalloc_simple/malloc.c
+index 2fce0b084531..1727d0b45c61 100644
+--- a/lib/libmalloc_simple/malloc.c
++++ b/lib/libmalloc_simple/malloc.c
+@@ -63,6 +63,7 @@ static char *rcsid = "$FreeBSD$";
+ #include <stdint.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include "../libc/stdlib/u_subr_unit.h"
+ 
+ #include "malloc_heap.h"
+ 
+@@ -80,6 +81,7 @@ static char *rcsid = "$FreeBSD$";
+ #define	error_printf(...)	fprintf(stderr, __VA_ARGS__)
+ #endif
+ 
++static void * bound_ptr(void *mem, size_t nbytes);
+ static void morecore(int);
+ 
+ /*
+@@ -122,16 +124,6 @@ static_assert(sizeof(struct overhead) == sizeof(void *), "bad size");
+ #define	NBUCKETS 30
+ static struct ov_listhead nextf[NBUCKETS];
+ 
+-#ifdef CAPREVOKE
+-#define	MAX_QUARANTINE	(1024 * 1024)
+-#define	MAX_PAINTED	(4 * MAX_QUARANTINE)
+-static struct ov_listhead quarantine_bufs[NBUCKETS];
+-static struct ov_listhead painted_bufs[NBUCKETS];
+-static	size_t quarantine_size, painted_size;
+-static	volatile const struct cheri_revoke_info *cri;
+-static	cheri_revoke_epoch_t painted_epoch;
+-#endif
+-
+ static	size_t pagesz;			/* page size */
+ 
+ 
+@@ -150,124 +142,84 @@ botch(const char *s)
+ #define	ASSERT(p)
+ #endif
+ 
+-static void *
+-bound_ptr(void *mem, size_t nbytes)
+-{
+-	void *ptr;
+ 
+-	ptr = cheri_setbounds(mem, nbytes);
+-	ptr = cheri_andperm(ptr,
+-	    CHERI_PERMS_USERSPACE_DATA & ~CHERI_PERM_SW_VMEM);
+-	return (ptr);
+-}
+ 
+ #ifdef CAPREVOKE
+-static void
+-free_painted(void)
+-{
+-	int bucket;
+-	struct overhead *op;
+-
+-	for (bucket = 0; bucket < NBUCKETS; bucket++) {
+-		SLIST_FOREACH(op, &painted_bufs[bucket], ov_next)
+-			__clear_shadow(op, FIRST_BUCKET_SIZE << bucket);
++static void tls_caprevoke_mark_sealed(void* ptr){
++	int otype = cheri_gettype(ptr);
++	if(otype==-1){
++		return;
+ 	}
++	int byte_offset = otype/8;
++	int bit_offset = otype%8;
++	char sealing_byte = ((char*)global_sealing_bitmap)[byte_offset];
+ 
+-	/* XXX: how do we know that no thread is revoking? */
+-	atomic_thread_fence(memory_order_acq_rel);
+-
+-	while (!SLIST_EMPTY(&painted_bufs[bucket])) {
+-		op = SLIST_FIRST(&painted_bufs[bucket]);
+-		SLIST_REMOVE_HEAD(&painted_bufs[bucket], ov_next);
+-		SLIST_INSERT_HEAD(&nextf[bucket], op, ov_next);
++	//verify that the memory is not already sealed
++	if((sealing_byte>>bit_offset)&1){
++		exit(-1);
+ 	}
+-	painted_size = 0;
++	//set sealing bitmap value
++	((char*)global_sealing_bitmap)[byte_offset] = sealing_byte | (1<<bit_offset);
++	asm("fence\n\t");
++	return; 
+ }
+ 
++/* Colored capabilities implementation */
+ static void
+-try_revoke(int target_bucket)
++libc_caprevoke_init(void)
+ {
+-	int bucket, error;
+-	struct overhead *op;
+-
+-	/* See if prior painting has resulted in revoked pointers. */
+-	/*
+-	 * NB: despite the NULL check below, cri is always non-NULL if
+-	 * used here.  We defer initilization as long as possible to
+-	 * avoid the extra syscall in the common case.
+-	 */
+-	if (painted_size > 0 &&
+-	    cheri_revoke_epoch_clears(cri->epochs.dequeue, painted_epoch))
+-		free_painted();
+-
+-	if (quarantine_size < MAX_QUARANTINE && painted_size < MAX_PAINTED)
++	if (global_cheri_otypes_initialized) {
+ 		return;
++	}
+ 
+ 	if (cri == NULL) {
+ 		if (cheri_revoke_get_shadow(CHERI_REVOKE_SHADOW_INFO_STRUCT,
+-		    NULL, __DECONST(void **, &cri)) != 0) {
++		    NULL, (void **)&cri) != 0) {
+ 			if (errno == ENOSYS) {
+-				assert(cri == NULL);
+-				/*
+-				 * Revocation is not supported.
+-				 * Just pretend like it succeeded and transfer
+-				 * all the * quarantined buffers to the free
+-				 * buffers.
+-				 */
+-
+-				for (bucket = 0; bucket < NBUCKETS; bucket++) {
+-					while (!SLIST_EMPTY(
+-					    &quarantine_bufs[bucket])) {
+-						op = SLIST_FIRST(
+-						    &quarantine_bufs[bucket]);
+-						SLIST_REMOVE_HEAD(
+-						    &quarantine_bufs[bucket],
+-						    ov_next);
+-						SLIST_INSERT_HEAD(
+-						    &nextf[bucket], op,
+-						    ov_next);
+-					}
+-				}
+-
+ 				return;
+-			} else
+-				abort();
++			}
++			abort();
+ 		}
+ 	}
+ 
+-	/* Paint all buffers in quarantine */
+-	for (bucket = 0; bucket < NBUCKETS; bucket++) {
+-		while (!SLIST_EMPTY(&quarantine_bufs[bucket])) {
+-			op = SLIST_FIRST(&quarantine_bufs[bucket]);
+-			SLIST_REMOVE_HEAD(&quarantine_bufs[bucket], ov_next);
+-			__paint_shadow(op, FIRST_BUCKET_SIZE << bucket);
+-			SLIST_INSERT_HEAD(&painted_bufs[bucket], op, ov_next);
+-		}
++	if (cheri_revoke_get_shadow(CHERI_CC_SEALING_BITMAP, NULL,
++	    &global_sealing_bitmap) != 0) {
++		abort();
+ 	}
+-	painted_size += quarantine_size;
+-	quarantine_size = 0;
+-	atomic_thread_fence(memory_order_acq_rel);
+-	painted_epoch = cri->epochs.enqueue;
++	global_sealing_bitmap_size = __builtin_cheri_length_get(global_sealing_bitmap);
++	
++	cheri_otypes_ptr = get_global_cheri_otypes();
++	
++	global_cheri_otypes_initialized = true;
++}
+ 
+-	/*
+-	 * Don't force revocation unless we've exceeded MAX_PAINTED and
+-	 * it would return memory we actually want.  Otherwise, just
+-	 * hope the base malloc does the job for us.
+-	 */
+-	if (painted_size < MAX_PAINTED ||
+-	    SLIST_EMPTY(&painted_bufs[target_bucket]))
+-		return;
+ 
+-	while (!cheri_revoke_epoch_clears(cri->epochs.dequeue, painted_epoch)) {
+-		error = cheri_revoke(CHERI_REVOKE_LAST_PASS, painted_epoch,
+-		    NULL);
+-		assert(error == 0);
++/* Colored capabilities*/
++static void* cc_set_objectid(void* p){
++	int otype = alloc_unr(cheri_otypes_ptr);
++	if (otype < 0) {
++		error_printf("simple_malloc: otype < 0, returning uncolored\n");
++		return p;
+ 	}
++	p = __builtin_cheri_cc_set_type(p, otype);
++	return p;
++}
+ 
+-	free_painted();
++#endif /* CAPREVOKE */
+ 
+-}
++static void *
++bound_ptr(void *mem, size_t nbytes)
++{
++	void *ptr;
++
++	ptr = cheri_setbounds(mem, nbytes);
++#ifdef CAPREVOKE
++	ptr = cc_set_objectid(ptr);
+ #endif
++	ptr = cheri_andperm(ptr,
++	    CHERI_PERMS_USERSPACE_DATA & ~CHERI_PERM_SW_VMEM);
++	return (ptr);
++}
+ 
+ static void *
+ __simple_malloc_unaligned(size_t nbytes)
+@@ -306,10 +258,6 @@ __simple_malloc_unaligned(size_t nbytes)
+ 	 * If nothing in hash bucket right now,
+ 	 * request more memory from the system.
+ 	 */
+-#ifdef CAPREVOKE
+-	if (SLIST_EMPTY(bucketp))
+-		try_revoke(bucket);
+-#endif
+ 	if (SLIST_EMPTY(bucketp)) {
+ 		morecore(bucket);
+ 		if (SLIST_EMPTY(bucketp))
+@@ -350,6 +298,12 @@ __simple_malloc(size_t nbytes)
+ #ifdef __CHERI_PURE_CAPABILITY__
+ 	size_t align, mask;
+ 
++#ifdef CAPREVOKE
++	if (!global_cheri_otypes_initialized)
++		libc_caprevoke_init();
++   //check_and_perform_flush();
++#endif
++
+ 	mask = CHERI_REPRESENTABLE_ALIGNMENT_MASK(nbytes);
+ 	nbytes = CHERI_REPRESENTABLE_LENGTH(nbytes);
+ 	align = 1 + ~mask;
+@@ -480,6 +434,8 @@ find_overhead(void * cp)
+ 	return (NULL);
+ }
+ 
++
++
+ static void
+ __simple_free(void *cp)
+ {
+@@ -489,16 +445,15 @@ __simple_free(void *cp)
+ 	if (cp == NULL)
+ 		return;
+ 	op = find_overhead(cp);
++#ifdef CAPREVOKE
++	tls_caprevoke_mark_sealed(cp);
++#endif
+ 	if (op == NULL)
+ 		return;
+ 	bucket = op->ov_index;
+ 	ASSERT(bucket < NBUCKETS);
+-#ifdef CAPREVOKE
+-	SLIST_INSERT_HEAD(&quarantine_bufs[bucket], op, ov_next);
+-	quarantine_size += FIRST_BUCKET_SIZE << bucket;
+-#else
++
+ 	SLIST_INSERT_HEAD(&nextf[bucket], op, ov_next);
+-#endif
+ }
+ 
+ static void *
+@@ -512,6 +467,11 @@ __simple_realloc(void *cp, size_t nbytes)
+ #ifdef __CHERI_PURE_CAPABILITY__
+ 	/* Round up here because we might need to set bounds... */
+ 	nbytes = CHERI_REPRESENTABLE_LENGTH(nbytes);
++#ifdef CAPREVOKE
++	if (!global_cheri_otypes_initialized)
++		libc_caprevoke_init();
++   //check_and_perform_flush();
++#endif
+ #endif
+ 
+ 	if (cp == NULL)
+diff --git a/sys/arm64/arm64/cheri_revoke_machdep.c b/sys/arm64/arm64/cheri_revoke_machdep.c
+index 3b029dd5c93a..0188afe602f2 100644
+--- a/sys/arm64/arm64/cheri_revoke_machdep.c
++++ b/sys/arm64/arm64/cheri_revoke_machdep.c
+@@ -268,7 +268,7 @@ vm_cheri_revoke_test(const struct vm_cheri_revoke_cookie *crc, uintcap_t cut)
+ 		enable_user_memory_access();
+ #endif
+ 		res = crc->map->vm_cheri_revoke_test(crc->crshadow, cut,
+-		    cheri_getperm(cut), start, end);
++		    cheri_getperm(cut), start, end, crc->sealing_bitmap_copy);
+ #ifdef CHERI_CAPREVOKE_FAST_COPYIN
+ 		disable_user_memory_access();
+ 		curthread->td_pcb->pcb_onfault = prev_onfault;
+diff --git a/sys/arm64/include/cherireg.h b/sys/arm64/include/cherireg.h
+index 6caca2a9dc88..f6dd20bace21 100644
+--- a/sys/arm64/include/cherireg.h
++++ b/sys/arm64/include/cherireg.h
+@@ -128,7 +128,7 @@
+ 
+ #define	CHERI_PERMS_USERSPACE_CODE					\
+ 	(CHERI_PERMS_USERSPACE | CHERI_PERM_EXECUTE |			\
+-	CHERI_PERM_EXECUTIVE | CHERI_PERM_MUTABLE_LOAD)
++	CHERI_PERM_EXECUTIVE | CHERI_PERM_MUTABLE_LOAD | CHERI_PERM_SYSTEM_REGS)
+ 
+ #define	CHERI_PERMS_USERSPACE_SEALCAP					\
+ 	(CHERI_PERM_GLOBAL | CHERI_PERM_SEAL | CHERI_PERM_UNSEAL)
+diff --git a/sys/cheri/revoke.h b/sys/cheri/revoke.h
+index fe7cf80d275e..364ac4c22730 100644
+--- a/sys/cheri/revoke.h
++++ b/sys/cheri/revoke.h
+@@ -274,6 +274,7 @@ struct cheri_revoke_info {
+ 	const ptraddr_t			base_otype;
+ 
+ 	struct cheri_revoke_epochs	epochs;
++	__uint8_t* __capability sealing_bitmap_copy;
+ };
+ 
+ struct cheri_revoke_syscall_info {
+@@ -300,8 +301,12 @@ struct cheri_revoke_syscall_info {
+  * minimal-bookkeeping version of libmrs uses this, and that's very convenient.
+  */
+ #define	CHERI_REVOKE_SHADOW_NOVMEM_ENTIRE	0x07	/* The entire shadow region */
++ 
++#define CHERI_CC_SEALING_BITMAP				0x08    /* Colored capability sealing bitmap */
++#define CHERI_CC_SEALING_BITMAP_COPY		0x09    /* Colored capability sealing bitmap copy*/
+ 
+-#define	CHERI_REVOKE_SHADOW_SPACE_MASK		0x07	/* Flag bits for shadow index */
++
++#define	CHERI_REVOKE_SHADOW_SPACE_MASK		0xf	/* Flag bits for shadow index */
+ 
+ #ifndef _KERNEL
+ /*
+diff --git a/sys/conf/files b/sys/conf/files
+index f52b7a952209..0dbedc5f24e5 100644
+--- a/sys/conf/files
++++ b/sys/conf/files
+@@ -396,6 +396,7 @@ cheri/cheri_tags.c			optional cpu_cheri
+ cheri/cheri_usercap.c			optional cpu_cheri
+ 
+ vm/vm_cheri_revoke.c			optional cpu_cheri cheri_caprevoke
++vm/cc_revoke.c					optional cpu_cheri cheri_caprevoke
+ 
+ # dtrace specific
+ cddl/contrib/opensolaris/uts/common/dtrace/dtrace.c	optional dtrace compile-with "${DTRACE_C}" \
+diff --git a/sys/kern/kern_cheri_revoke.c b/sys/kern/kern_cheri_revoke.c
+index c36258b617d5..c071ba57601f 100644
+--- a/sys/kern/kern_cheri_revoke.c
++++ b/sys/kern/kern_cheri_revoke.c
+@@ -60,6 +60,8 @@
+ #include <vm/vm_cheri_revoke.h>
+ #include <sys/syscallsubr.h>
+ 
++#include <vm/cc_revoke.h>
++
+ /*
+  * We reserve the FEATURE(cheri_revoke) and VM SYSCTL() namespace cheri_revoke
+  * for the real implementation.
+@@ -538,6 +540,8 @@ kern_cheri_revoke(struct thread *td, int flags,
+ 			    crstp, &crepochs));
+ 		}
+ 
++
++
+ 		/*
+ 		 * Don't bump the epoch count here, just the state!  Wait
+ 		 * until we're certain it's actually open, which we can only
+@@ -552,6 +556,16 @@ kern_cheri_revoke(struct thread *td, int flags,
+ 	}
+ 	vm_map_unlock(vmm);
+ 
++
++	//copy the sealing bitmap and store the pointer to it in the info page
++	res = vm_cheri_revoke_sealing_bitmap_copy(td, vmm, &vmcrc);
++	if (res != KERN_SUCCESS) {
++		return (cheri_revoke_fini(crsi, vm_mmap_to_errno(res),
++			crstp, &crepochs));
++	}
++	if(td->td_proc->cheri_cc_sealing_base_copy==0){
++		td->td_proc->cheri_cc_sealing_base_copy = vmcrc.sealing_bitmap_copy;
++	}
+ 	/*
+ 	 * I am the revoker; expose an incremented epoch to userland
+ 	 * for its enqueue side.  Use a store fence to ensure that this
+@@ -569,6 +583,7 @@ kern_cheri_revoke(struct thread *td, int flags,
+ 	vm_cheri_revoke_publish_epochs(info_page, &crepochs);
+ 	wmb();
+ 
++
+ 	/*
+ 	 * If we've already begun the load-side work and are now just going
+ 	 * to close it out, there's no need to do any thread singling, so
+@@ -778,6 +793,7 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
+ 
+ 	switch (sel) {
+ 	case CHERI_REVOKE_SHADOW_NOVMEM:
++		//panic("shadowbitmap is removed, only use CHERI_CC_SEALING_BITMAP or CHERI_REVOKE_SHADOW_INFO_STRUCT\n");
+ 
+ 		if (cheri_gettag(arena) == 0)
+ 			return (EINVAL);
+@@ -797,6 +813,7 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
+ 
+ 	case CHERI_REVOKE_SHADOW_OTYPE:
+ 	    {
++		//panic("shadowbitmap is removed, only use CHERI_CC_SEALING_BITMAP or CHERI_REVOKE_SHADOW_INFO_STRUCT\n");	
+ 		int reqperms;
+ 
+ 		if (cheri_gettag(arena) == 0)
+@@ -818,13 +835,35 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
+ 		break;
+ 	    }
+ 	case CHERI_REVOKE_SHADOW_INFO_STRUCT:
+-	case CHERI_REVOKE_SHADOW_NOVMEM_ENTIRE: // XXX
+-	    {
++	{
+ 		/* Anyone's allowed to ask, I guess; ->arena ignored. */
+ 		cres = vm_cheri_revoke_shadow_cap(curproc->p_sysent,
+ 			sel, 0, 0, 0);
+ 		break;
++	}
++	case CHERI_REVOKE_SHADOW_NOVMEM_ENTIRE: // XXX
++	    {	
++		//panic("shadowbitmap is removed, only use CHERI_CC_SEALING_BITMAP or CHERI_REVOKE_SHADOW_INFO_STRUCT\n");
+ 	    }
++	case CHERI_CC_SEALING_BITMAP:
++		{
++		struct sysentvec* sv = curproc->p_sysent;
++		vm_offset_t cc_sealing_base = sv->sv_cheri_cc_sealing_base;
++		cres = cheri_capability_build_user_data(CHERI_PERM_LOAD | CHERI_PERM_STORE | CHERI_PERM_GLOBAL,
++		    cc_sealing_base, SEALING_BITMAP_SIZE, 0);
++		break;
++		}
++	case CHERI_CC_SEALING_BITMAP_COPY:
++		{
++		struct proc* p = td->td_proc;
++		if(p->cheri_cc_sealing_base_copy==0){
++			return -1;
++		}
++		cres = cheri_capability_build_user_data(CHERI_PERM_LOAD | CHERI_PERM_STORE | CHERI_PERM_GLOBAL,
++			p->cheri_cc_sealing_base_copy, SEALING_BITMAP_SIZE, 0);
++		p->cheri_cc_sealing_base_copy=0;
++		break;
++		}
+ 	default:
+ 		return (EINVAL);
+ 	}
+diff --git a/sys/kern/kern_exec.c b/sys/kern/kern_exec.c
+index 8deeb6a71dc5..8ebd29f64b83 100644
+--- a/sys/kern/kern_exec.c
++++ b/sys/kern/kern_exec.c
+@@ -83,6 +83,7 @@
+ #include <vm/vm_map.h>
+ #ifdef CHERI_CAPREVOKE
+ #include <vm/vm_cheri_revoke.h>
++#include <vm/cc_revoke.h>
+ #endif
+ #include <vm/vm_kern.h>
+ #include <vm/vm_extern.h>
+@@ -359,7 +360,6 @@ int
+ kern_execve(struct thread *td, struct image_args *args,
+     void * __capability mac_p, struct vmspace *oldvmspace)
+ {
+-
+ 	TSEXEC(td->td_proc->p_pid, args->begin_argv);
+ 	AUDIT_ARG_ARGV(args->begin_argv, args->argc,
+ 	    exec_args_get_begin_envv(args) - args->begin_argv);
+@@ -1358,7 +1358,7 @@ exec_map_stack(struct image_params *imgp)
+ 	 * see a per-sv hook here.
+ 	 */
+ 	if (sv->sv_flags & SV_CHERI) {
+-		error = vm_map_install_cheri_revoke_shadow(map, sv);
++		error = vm_map_install_cc_sealing_bitmap(map, sv);
+ 
+ 		if (error != KERN_SUCCESS)
+ 			return (vm_mmap_to_errno(error));
+diff --git a/sys/kern/kern_exit.c b/sys/kern/kern_exit.c
+index dc083c5817c1..4a4637aa5b14 100644
+--- a/sys/kern/kern_exit.c
++++ b/sys/kern/kern_exit.c
+@@ -93,6 +93,10 @@
+ dtrace_execexit_func_t	dtrace_fasttrap_exit;
+ #endif
+ 
++#ifdef CHERI_CAPREVOKE
++#include <vm/cc_revoke.h>
++#endif
++
+ SDT_PROVIDER_DECLARE(proc);
+ SDT_PROBE_DEFINE1(proc, , , exit, "int");
+ 
+@@ -485,7 +489,6 @@ exit1(struct thread *td, int rval, int signo)
+ 	 * revoke control tty if exiting process was a session leader.
+ 	 */
+ 	killjobc();
+-
+ 	/*
+ 	 * Reparent all children processes:
+ 	 * - traced ones to the original parent (or init if we are that parent)
+diff --git a/sys/kern/kern_fork.c b/sys/kern/kern_fork.c
+index dcdf27727b13..4d4ed9f91713 100644
+--- a/sys/kern/kern_fork.c
++++ b/sys/kern/kern_fork.c
+@@ -82,6 +82,11 @@
+ #include <vm/vm_extern.h>
+ #include <vm/uma.h>
+ 
++#ifdef CHERI_CAPREVOKE
++#include <vm/vm_cheri_revoke.h>
++#include <vm/cc_revoke.h>
++#endif
++
+ #ifdef KDTRACE_HOOKS
+ #include <sys/dtrace_bsd.h>
+ dtrace_fork_func_t	dtrace_fasttrap_fork;
+@@ -859,7 +864,7 @@ int
+ fork1(struct thread *td, struct fork_req *fr)
+ {
+ 	struct proc *p1, *newproc;
+-	struct thread *td2;
++	struct thread *td2 = NULL;
+ 	struct vmspace *vm2;
+ 	struct ucred *cred;
+ 	struct file *fp_procdesc;
+diff --git a/sys/kern/subr_unit.c b/sys/kern/subr_unit.c
+index 9551a51e2e85..b7af031fd4e0 100644
+--- a/sys/kern/subr_unit.c
++++ b/sys/kern/subr_unit.c
+@@ -351,7 +351,7 @@ free_iter_unr(void *handle)
+  *
+  * Called at all boundaries of this API.
+  */
+-static void
++static int
+ check_unrhdr(struct unrhdr *uh, int line)
+ {
+ 	struct unr *up;
+@@ -381,14 +381,15 @@ check_unrhdr(struct unrhdr *uh, int line)
+ 	KASSERT (z == uh->alloc,
+ 	    ("UNR inconsistency: chunks %u found %u (line %d)\n",
+ 	    uh->alloc, z, line));
++	return 0;
+ }
+ 
+ #else
+ 
+-static __inline void
++static __inline int
+ check_unrhdr(struct unrhdr *uh __unused, int line __unused)
+ {
+-
++	return 0;
+ }
+ 
+ #endif
+diff --git a/sys/riscv/include/cherireg.h b/sys/riscv/include/cherireg.h
+index a8435becc5f9..7f81452afdc2 100644
+--- a/sys/riscv/include/cherireg.h
++++ b/sys/riscv/include/cherireg.h
+@@ -66,16 +66,12 @@
+ /* User-defined permission bits. */
+ #define	CHERI_PERM_SW0			(1 << 15)	/* 0x00008000 */
+ #define	CHERI_PERM_SW1			(1 << 16)	/* 0x00010000 */
+-#define	CHERI_PERM_SW2			(1 << 17)	/* 0x00020000 */
+-#define	CHERI_PERM_SW3			(1 << 18)	/* 0x00040000 */
+ 
+ /*
+  * CHERI_PERMS_SWALL: Mask of all available software-defined permissions
+  * CHERI_PERMS_HWALL: Mask of all available hardware-defined permissions
+  */
+-#define	CHERI_PERMS_SWALL						\
+-	(CHERI_PERM_SW0 | CHERI_PERM_SW1 | CHERI_PERM_SW2 |		\
+-	CHERI_PERM_SW3)
++#define	CHERI_PERMS_SWALL	(CHERI_PERM_SW0 | CHERI_PERM_SW1)
+ 
+ #define	CHERI_PERMS_HWALL						\
+ 	(CHERI_PERM_GLOBAL | CHERI_PERM_EXECUTE |			\
+@@ -170,11 +166,12 @@
+  * User and kernel software should be written so as to not place assumptions
+  * about the specific values used here, as they may change.
+  */
+-#define	CHERI_OTYPE_BITS	(18)
+-#define	CHERI_OTYPE_USER_MIN	(0)
+-#define	CHERI_OTYPE_USER_MAX	((1 << (CHERI_OTYPE_BITS - 1)) - 1)
+-#define	CHERI_OTYPE_KERN_MIN	(1 << (CHERI_OTYPE_BITS - 1))
+-#define	CHERI_OTYPE_KERN_MAX	((1 << CHERI_OTYPE_BITS) - 1)
++#define	CHERI_OTYPE_BITS	(21)
++#define CHERI_OTYPES_LEGACY		(4)
++#define	CHERI_OTYPE_USER_MIN	(1)
++#define	CHERI_OTYPE_USER_MAX	((1 << CHERI_OTYPE_BITS) - CHERI_OTYPES_LEGACY) //-1 to -3 are reserved
++#define	CHERI_OTYPE_KERN_MIN	CHERI_OTYPE_USER_MAX
++#define	CHERI_OTYPE_KERN_MAX	CHERI_OTYPE_USER_MAX
+ #define	CHERI_OTYPE_KERN_FLAG	(1 << (CHERI_OTYPE_BITS - 1))
+ #define	CHERI_OTYPE_ISKERN(x)	(((x) & CHERI_OTYPE_KERN_FLAG) != 0)
+ #define	CHERI_OTYPE_ISUSER(x)	(!(CHERI_OTYPE_ISKERN(x)))
+diff --git a/sys/riscv/include/encoding.h b/sys/riscv/include/encoding.h
+index c9ef8a985dfd..550d00b2bc5f 100644
+--- a/sys/riscv/include/encoding.h
++++ b/sys/riscv/include/encoding.h
+@@ -740,6 +740,7 @@
+ #define CSR_MHPMCOUNTER29H 0xb9d
+ #define CSR_MHPMCOUNTER30H 0xb9e
+ #define CSR_MHPMCOUNTER31H 0xb9f
++#define CSR_CCP 0x012
+ #define CAUSE_MISALIGNED_FETCH 0x0
+ #define CAUSE_FETCH_ACCESS 0x1
+ #define CAUSE_ILLEGAL_INSTRUCTION 0x2
+@@ -1232,6 +1233,9 @@ DECLARE_CSR(mhpmcounter28h, CSR_MHPMCOUNTER28H)
+ DECLARE_CSR(mhpmcounter29h, CSR_MHPMCOUNTER29H)
+ DECLARE_CSR(mhpmcounter30h, CSR_MHPMCOUNTER30H)
+ DECLARE_CSR(mhpmcounter31h, CSR_MHPMCOUNTER31H)
++#ifdef CHERI_CAPREVOKE
++DECLARE_CSR(ccp, CSR_CCP)
++#endif
+ #endif
+ #ifdef DECLARE_CAUSE
+ DECLARE_CAUSE("misaligned fetch", CAUSE_MISALIGNED_FETCH)
+diff --git a/sys/riscv/include/frame.h b/sys/riscv/include/frame.h
+index b7a88e01e38a..ac2ae10df860 100644
+--- a/sys/riscv/include/frame.h
++++ b/sys/riscv/include/frame.h
+@@ -67,6 +67,8 @@ struct trapframe {
+ 	uint64_t tf_sstatus;
+ 	uint64_t tf_stval;
+ 	uint64_t tf_scause;
++	uint64_t tf_ccp;
++
+ };
+ 
+ #ifdef _KERNEL
+diff --git a/sys/riscv/include/pcb.h b/sys/riscv/include/pcb.h
+index 3b5bca1e5c36..ee379c7dcb8b 100644
+--- a/sys/riscv/include/pcb.h
++++ b/sys/riscv/include/pcb.h
+@@ -53,6 +53,7 @@ struct pcb {
+ 	uint64_t	pcb_tp;		/* Thread pointer */
+ 	uint64_t	pcb_s[12];	/* Saved registers */
+ #endif
++	uint64_t	pcb_ccp;	/* colored cap pointer*/
+ 	uint64_t	pcb_x[32][2];	/* Floating point registers */
+ 	uint64_t	pcb_fcsr;	/* Floating point control reg */
+ 	uint64_t	pcb_fpflags;	/* Floating point flags */
+diff --git a/sys/riscv/include/reg.h b/sys/riscv/include/reg.h
+index 5883e24c51d2..878a19a92ad0 100644
+--- a/sys/riscv/include/reg.h
++++ b/sys/riscv/include/reg.h
+@@ -47,6 +47,7 @@ struct reg {
+ 	__uint64_t	a[8];		/* function arguments */
+ 	__uint64_t	sepc;		/* exception program counter */
+ 	__uint64_t	sstatus;	/* status register */
++	__uint64_t	ccp;	/* colored cap register */
+ };
+ 
+ struct fpreg {
+@@ -71,6 +72,8 @@ struct capreg {
+ 	__uintcap_t ddc;
+ 	__uint64_t tagmask;
+ 	__uint64_t pad;
++
++	__uint64_t	ccp;	/* colored cap register */
+ };
+ #endif
+ 
+diff --git a/sys/riscv/riscv/cheri_revoke_machdep.c b/sys/riscv/riscv/cheri_revoke_machdep.c
+index b9cac80062b3..61d4ff0fa318 100644
+--- a/sys/riscv/riscv/cheri_revoke_machdep.c
++++ b/sys/riscv/riscv/cheri_revoke_machdep.c
+@@ -89,14 +89,12 @@ vm_cheri_revoke_tlb_fault(void)
+  */
+ 
+ static int
+-vm_do_cheri_revoke(int *res, const struct vm_cheri_revoke_cookie *crc,
+-    const uint8_t * __capability crshadow, vm_cheri_revoke_test_fn ctp,
++vm_do_cheri_revoke(int *res, const struct vm_cheri_revoke_cookie *crc, vm_cheri_revoke_test_fn ctp,
+     uintcap_t * __capability cutp, uintcap_t cut, vm_offset_t start,
+     vm_offset_t end)
+ {
+ 	int perms = cheri_getperm(cut);
+ 	CHERI_REVOKE_STATS_FOR(crst, crc);
+-
+ 	if (perms == 0) {
+ 		/* For revoked or permissionless caps, do nothing. */
+ 
+@@ -108,7 +106,7 @@ vm_do_cheri_revoke(int *res, const struct vm_cheri_revoke_cookie *crc,
+ 		 */
+ 
+ 		CHERI_REVOKE_STATS_BUMP(crst, caps_found_revoked);
+-	} else if (cheri_gettag(cut) && ctp(crshadow, cut, perms, start, end)) {
++	} else if (cheri_gettag(cut) && ctp(cut, perms, start, end, crc->sealing_bitmap_copy)) {
+ 		void * __capability cscratch;
+ 		int ok;
+ 
+@@ -255,8 +253,7 @@ SYSINIT(
+ 
+ static inline int
+ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+-    int (*cb)(int *, const struct vm_cheri_revoke_cookie *,
+-	const uint8_t * __capability, vm_cheri_revoke_test_fn,
++    int (*cb)(int *, const struct vm_cheri_revoke_cookie *, vm_cheri_revoke_test_fn,
+ 	uintcap_t * __capability, uintcap_t, vm_offset_t, vm_offset_t),
+     uintcap_t * __capability mvu, vm_offset_t mve)
+ {
+@@ -274,7 +271,6 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+ 
+ 	/* Load once up front, which is almost as good as const */
+ 	vm_cheri_revoke_test_fn ctp = crc->map->vm_cheri_revoke_test;
+-	const uint8_t * __capability crshadow = crc->crshadow;
+ #ifdef CHERI_CAPREVOKE_CLOADTAGS
+ 	uint8_t _cloadtags_stride = cloadtags_stride;
+ 	uint64_t tags, nexttags;
+@@ -311,7 +307,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+ 			if (!(tags & 1))
+ 				continue;
+ 
+-			if (cb(&res, crc, crshadow, ctp, mvt, *mvt, start, end))
++			if (cb(&res, crc, ctp, mvt, *mvt, start, end))
+ 				goto out;
+ 		}
+ 
+@@ -326,7 +322,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+ 			if (!(tags & 1))
+ 				continue;
+ 
+-			if (cb(&res, crc, crshadow, ctp, mvt, *mvt, start, end))
++			if (cb(&res, crc, ctp, mvt, *mvt, start, end))
+ 				goto out;
+ 		}
+ 	}
+@@ -338,7 +334,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+ 		uintcap_t cut = *mvu;
+ 
+ 		if (cheri_gettag(cut)) {
+-			if (cb(&res, crc, crshadow, ctp, mvu, cut, start, end))
++			if (cb(&res, crc, ctp, mvu, cut, start, end))
+ 				goto out;
+ 		}
+ 	}
+@@ -371,8 +367,8 @@ vm_cheri_revoke_test(const struct vm_cheri_revoke_cookie *crc, uintcap_t cut)
+ 		    (vm_pointer_t)vm_cheri_revoke_tlb_fault;
+ 		enable_user_memory_access();
+ #endif
+-		res = crc->map->vm_cheri_revoke_test(crc->crshadow, cut,
+-		    cheri_getperm(cut), start, end);
++		res = crc->map->vm_cheri_revoke_test(cut,
++		    cheri_getperm(cut), start, end, crc->sealing_bitmap_copy);
+ #ifdef CHERI_CAPREVOKE_FAST_COPYIN
+ 		disable_user_memory_access();
+ 		curthread->td_pcb->pcb_onfault = prev_onfault;
+@@ -426,8 +422,7 @@ vm_cheri_revoke_page_rw(const struct vm_cheri_revoke_cookie *crc, vm_page_t m)
+ 
+ static inline int
+ vm_cheri_revoke_page_ro_adapt(int *res,
+-    const struct vm_cheri_revoke_cookie *vmcrc,
+-    const uint8_t * __capability crshadow, vm_cheri_revoke_test_fn ctp,
++    const struct vm_cheri_revoke_cookie *vmcrc, vm_cheri_revoke_test_fn ctp,
+     uintcap_t * __capability cutp __unused, uintcap_t cut, vm_offset_t start,
+     vm_offset_t end)
+ {
+@@ -437,7 +432,7 @@ vm_cheri_revoke_page_ro_adapt(int *res,
+ 
+ 	*res |= VM_CHERI_REVOKE_PAGE_HASCAPS;
+ 
+-	if (ctp(crshadow, cut, cheri_getperm(cut), start, end)) {
++	if (ctp(cut, cheri_getperm(cut), start, end, vmcrc->sealing_bitmap_copy)) {
+ 		*res |= VM_CHERI_REVOKE_PAGE_DIRTY;
+ 
+ 		/* One dirty answer is as good as any other; stop eary */
+diff --git a/sys/riscv/riscv/cheri_revoke_machdep_tests.c b/sys/riscv/riscv/cheri_revoke_machdep_tests.c
+index cb9bf070c7b3..dc3183d296bc 100644
+--- a/sys/riscv/riscv/cheri_revoke_machdep_tests.c
++++ b/sys/riscv/riscv/cheri_revoke_machdep_tests.c
+@@ -43,79 +43,7 @@
+ #include <vm/vm_param.h>
+ #include <vm/vm_map.h>
+ #include <vm/vm_cheri_revoke.h>
+-
+-/* Check the coarse-grained MAP bitmap */
+-static inline unsigned long
+-vm_cheri_revoke_test_mem_map(const uint8_t * __capability crshadow,
+-    uintcap_t cut)
+-{
+-	uint8_t bmbits;
+-	const uint8_t * __capability bmloc;
+-
+-	ptraddr_t va = cheri_getbase(cut);
+-
+-	bmloc = crshadow - VM_CHERI_REVOKE_BSZ_OTYPE -
+-	    (va / VM_CHERI_REVOKE_GSZ_MEM_MAP / 8);
+-
+-#ifdef CHERI_CAPREVOKE_FAST_COPYIN
+-	/* XXX This is terribly, terribly unsafe and should go away. */
+-	bmbits = *bmloc;
+-#else
+-	{
+-		int bmbits_ext = fubyte(bmloc);
+-		if (bmbits_ext == -1) {
+-			printf("%s: failed to read shadow for %#.16lp"
+-			    "(s=%#.16lp); assuming not revoked!\n",
+-			    __func__, (void * __capability)cut, crshadow);
+-			return (0);
+-		}
+-		bmbits = bmbits_ext & 0xFF;
+-	}
+-#endif
+-
+-	/* Fast path: often these are all zeros */
+-
+-	if (bmbits == 0) {
+-		return (0);
+-	}
+-
+-	return (bmbits & (1 << ((va / VM_CHERI_REVOKE_GSZ_MEM_MAP) % 8)));
+-}
+-
+-/* Check the fine-grained NOMAP bitmap */
+-static inline unsigned long
+-vm_cheri_revoke_test_mem_nomap(const uint8_t * __capability crshadow,
+-    uintcap_t cut)
+-{
+-	uint8_t bmbits;
+-	const uint8_t * __capability bmloc;
+-
+-	ptraddr_t va = cheri_getbase(cut);
+-
+-	bmloc = crshadow + (va / VM_CHERI_REVOKE_GSZ_MEM_NOMAP / 8);
+-
+-#ifdef CHERI_CAPREVOKE_FAST_COPYIN
+-	/* XXX This is terribly, terribly unsafe and should go away. */
+-	bmbits = *bmloc;
+-#else
+-	{
+-		int bmbits_ext = fubyte(bmloc);
+-		if (bmbits_ext == -1) {
+-			printf("%s: failed to read shadow for %#.16lp"
+-			    "(s=%#.16lp); assuming not revoked!\n",
+-			    __func__, (void * __capability)cut, crshadow);
+-			return (0);
+-		}
+-		bmbits = bmbits_ext & 0xFF;
+-	}
+-#endif
+-
+-	if (bmbits == 0) {
+-		return (0);
+-	}
+-
+-	return bmbits & (1 << ((va / VM_CHERI_REVOKE_GSZ_MEM_NOMAP) % 8));
+-}
++#include <vm/cc_revoke.h>
+ 
+ static inline unsigned
+ vm_cheri_revoke_test_range(vm_offset_t start, vm_offset_t end, uintcap_t cut)
+@@ -125,49 +53,37 @@ vm_cheri_revoke_test_range(vm_offset_t start, vm_offset_t end, uintcap_t cut)
+ 	return (va >= start && va < end);
+ }
+ 
+-// TODO: if ((perms & CHERI_PERMS_HWALL_OTYPE) != 0)
+-// TODO: if ((perms & CHERI_PERMS_HWALL_CID) != 0)
+-
+-static unsigned long
+-vm_cheri_revoke_test_just_mem(const uint8_t * __capability crshadow,
+-    uintcap_t cut, unsigned long perms, vm_offset_t start, vm_offset_t end)
+-{
+-	if ((perms & (CHERI_PERMS_HWALL_MEMORY | CHERI_PERM_SW_VMEM)) != 0) {
+-		if (vm_cheri_revoke_test_mem_map(crshadow, cut))
+-			return (1);
+-
+-		if ((perms & CHERI_PERM_SW_VMEM) == 0)
+-			return (vm_cheri_revoke_test_mem_nomap(crshadow, cut));
++static inline unsigned long vm_cheri_revoke_test_mem_cc(uintcap_t cut, uint64_t sealing_bitmap){
++	uint64_t otype = cheri_gettype(cut);
++	if(otype >= SEALING_BITMAP_SIZE*8){
++		return 0;
+ 	}
+-
+-	return (0);
+-}
+-
+-static unsigned long
+-vm_cheri_revoke_test_just_mem_fine(const uint8_t * __capability crshadow,
+-    uintcap_t cut, unsigned long perms, vm_offset_t start, vm_offset_t end)
+-{
+-	/*
+-	 * Most capabilities are memory capabilities, most are unrevoked,
+-	 * and comparatively few are VMMAP-bearing.... so do the load
+-	 * first and only then do the permissions checks.
+-	 */
+-
+-	if (vm_cheri_revoke_test_mem_nomap(crshadow, cut)) {
+-		if (__builtin_expect(perms & CHERI_PERM_SW_VMEM,0)) {
+-			return (0);
+-		}
+-
+-		return ((perms & CHERI_PERMS_HWALL_MEMORY) != 0);
++	uint64_t byte_offset = otype/8;
++	uint64_t bit_offset = otype%8;
++	uint8_t* __capability sealing_bitmap_cap = cheri_capability_build_user_data(CHERI_PERM_LOAD | CHERI_PERM_STORE | CHERI_PERM_GLOBAL, sealing_bitmap, SEALING_BITMAP_SIZE, 0);
++	
++	const uint8_t * __capability byte_address = sealing_bitmap_cap + byte_offset;
++	int byte = fubyte(byte_address);
++	if (byte == -1) {
++		printf("%s: failed to read sealingbitmap for %#.16lp"
++			"(s=%#.16lp); assuming not revoked!\n",
++			__func__, (void * __capability)cut, byte_address);
++		return (0);
+ 	}
+-
+-	return (0);
++	byte = byte & 0xFF;
++	if(byte==255){
++		return (1);
++	}else if(byte==0){
++		return (0);
++	}
++	return ((byte>>bit_offset)&1);
+ }
+ 
++
+ static unsigned long
+-vm_cheri_revoke_test_mem_fine_range(const uint8_t * __capability crshadow,
+-    uintcap_t cut, unsigned long perms, vm_offset_t start, vm_offset_t end)
++vm_cheri_revoke_test_cc(uintcap_t cut, unsigned long perms, vm_offset_t start, vm_offset_t end, uint64_t sealing_bitmap)
+ {
++	return 0;
+ 	/*
+ 	 * Only check the capability if it has some memory permissions.
+ 	 */
+@@ -176,13 +92,15 @@ vm_cheri_revoke_test_mem_fine_range(const uint8_t * __capability crshadow,
+ 			return (1);
+ 
+ 		if ((perms & CHERI_PERM_SW_VMEM) == 0) {
+-			return vm_cheri_revoke_test_mem_nomap(crshadow, cut);
++			return vm_cheri_revoke_test_mem_cc(cut, sealing_bitmap);
+ 		}
+ 	}
+ 
+ 	return (0);
+ }
+ 
++
++
+ void
+ vm_cheri_revoke_set_test(vm_map_t map, int flags)
+ {
+@@ -191,7 +109,7 @@ vm_cheri_revoke_set_test(vm_map_t map, int flags)
+ 	    VM_CHERI_REVOKE_CF_NO_OTYPES |
+ 	    VM_CHERI_REVOKE_CF_NO_CIDS:
+ 
+-		map->vm_cheri_revoke_test = vm_cheri_revoke_test_mem_fine_range;
++		map->vm_cheri_revoke_test = vm_cheri_revoke_test_cc;
+ 		break;
+ 
+ 	case VM_CHERI_REVOKE_CF_NO_COARSE_MEM |
+@@ -199,14 +117,14 @@ vm_cheri_revoke_set_test(vm_map_t map, int flags)
+ 	    VM_CHERI_REVOKE_CF_NO_CIDS |
+ 	    VM_CHERI_REVOKE_CF_NO_REV_ENTRY:
+ 
+-		map->vm_cheri_revoke_test = vm_cheri_revoke_test_just_mem_fine;
++		map->vm_cheri_revoke_test = vm_cheri_revoke_test_cc;
+ 		break;
+ 
+ 	case VM_CHERI_REVOKE_CF_NO_OTYPES |
+ 	    VM_CHERI_REVOKE_CF_NO_CIDS |
+ 	    VM_CHERI_REVOKE_CF_NO_REV_ENTRY:
+ 
+-		map->vm_cheri_revoke_test = vm_cheri_revoke_test_just_mem;
++		map->vm_cheri_revoke_test = vm_cheri_revoke_test_cc;
+ 		break;
+ 
+ 	default:
+diff --git a/sys/riscv/riscv/elf_machdep.c b/sys/riscv/riscv/elf_machdep.c
+index 12b880f66def..46486ef9aa25 100644
+--- a/sys/riscv/riscv/elf_machdep.c
++++ b/sys/riscv/riscv/elf_machdep.c
+@@ -59,6 +59,7 @@
+ #ifdef CHERI_CAPREVOKE
+ #include <cheri/revoke.h>
+ #include <vm/vm_cheri_revoke.h>
++#include <vm/cc_revoke.h>
+ #endif
+ 
+ #include "linker_if.h"
+@@ -158,51 +159,17 @@ elf64_register_sysvec(void *arg)
+ 	}
+ 
+ #ifdef CHERI_CAPREVOKE
+-	/*
+-	 * How big do we need the fine-grained memory shadow bitmap to be?  This
+-	 * will be either 1 << 40 or 1 << 32 bytes.
+-	 */
+-	const size_t shadow_fine_mem_size =
+-	    sv->sv_maxuser / 8 / VM_CHERI_REVOKE_GSZ_MEM_NOMAP;
+-
+-	/* Land the shadow somewhere awkward but easy */
+-	const ptraddr_t shadow_fine_mem_top =
+-	    sv->sv_usrstack & ~(shadow_fine_mem_size - 1);
+-
+-	/*
+-	 * OK, now figure out how much further down we need to go for the other
+-	 * structures.
+-	 */
+-
+-	/*
+-	 * The coarse-grained memory bitmap will be either 1 << 32 or 1 << 24
+-	 * bytes.
+-	 */
+-	const size_t shadow_coarse_mem_size =
+-	    sv->sv_maxuser / 8 / VM_CHERI_REVOKE_GSZ_MEM_MAP;
+-
+-	const size_t shadow_required_size = shadow_fine_mem_size
+-	    + shadow_coarse_mem_size
+-	    + VM_CHERI_REVOKE_BSZ_OTYPE;
+-
+-	const size_t shadow_representable_size =
+-	    CHERI_REPRESENTABLE_LENGTH(shadow_required_size);
+-
+-	sv->sv_cheri_revoke_shadow_length = shadow_representable_size;
+-	sv->sv_cheri_revoke_shadow_base =
+-	    shadow_fine_mem_top - shadow_representable_size;
+-
+-	/*
+-	 * This places the fine-grained memory bitmap at the top, and so
+-	 * naturally aligned, region within the representation-padded region
+-	 * just defined.
+-	 */
+-	sv->sv_cheri_revoke_shadow_offset =
+-	    shadow_representable_size - shadow_fine_mem_size;
++	//Colored capabilities bitmap
++	/* Land the sealing bitmap somewhere awkward but easy */
++	const ptraddr_t cheri_cc_sealing_top = sv->sv_usrstack & ~(SEALING_BITMAP_SIZE - 1); 
++	sv->sv_cheri_cc_sealing_base = cheri_cc_sealing_top - SEALING_BITMAP_SIZE; 
++	cc_write(sv->sv_cheri_cc_sealing_base);
++	cc_write_threshold(CHERI_OTYPE_USER_MAX);
+ 
+ 	/* It's ugly, but simple: manage the info page as a separate object */
+ 	sv->sv_cheri_revoke_info_page =
+-	    sv->sv_cheri_revoke_shadow_base - PAGE_SIZE;
++	    sv->sv_cheri_cc_sealing_base - PAGE_SIZE;
++
+ #endif
+ 
+ }
+diff --git a/sys/riscv/riscv/exception.S b/sys/riscv/riscv/exception.S
+index d87a6d3e5920..ddfc3303f989 100644
+--- a/sys/riscv/riscv/exception.S
++++ b/sys/riscv/riscv/exception.S
+@@ -206,6 +206,11 @@
+ 	csd	t0, (TF_STVAL)(csp)
+ 	csrr	t0, scause
+ 	csd	t0, (TF_SCAUSE)(csp)
++.if \mode == 0
++	/*Store colored cap register */
++	//csrr t0, ccp
++	//csd t0, (TF_CCP)(csp)
++.endif
+ #else
+ 	csrr	t0, sstatus
+ 	sd	t0, (TF_SSTATUS)(sp)
+@@ -313,6 +318,14 @@
+ 	clc	cgp, (TF_GP)(csp)
+ .endif
+ 
++.if \mode == 0	/* We came from userspace. */
++	/*Load colored cap register */
++	//cld t0, (TF_CCP)(csp)
++	//csrw ccp, t0
++.endif
++
++
++
+ 	clc	cra, (TF_RA)(csp)
+ 
+ 	clc	ct0, (TF_T + 0 * 16)(csp)
+diff --git a/sys/riscv/riscv/genassym.c b/sys/riscv/riscv/genassym.c
+index 6164719194b4..e5365b46452e 100644
+--- a/sys/riscv/riscv/genassym.c
++++ b/sys/riscv/riscv/genassym.c
+@@ -72,6 +72,9 @@ ASSYM(PCB_S, offsetof(struct pcb, pcb_s));
+ ASSYM(PCB_X, offsetof(struct pcb, pcb_x));
+ ASSYM(PCB_FCSR, offsetof(struct pcb, pcb_fcsr));
+ 
++ASSYM(PCB_CCP, offsetof(struct pcb, pcb_ccp));
++
++
+ ASSYM(SF_UC, offsetof(struct sigframe, sf_uc));
+ #ifdef COMPAT_FREEBSD64
+ ASSYM(SF64_UC, offsetof(struct sigframe64, sf_uc));
+@@ -105,6 +108,8 @@ ASSYM(TF_STVAL, offsetof(struct trapframe, tf_stval));
+ ASSYM(TF_SCAUSE, offsetof(struct trapframe, tf_scause));
+ ASSYM(TF_SSTATUS, offsetof(struct trapframe, tf_sstatus));
+ 
++ASSYM(TF_CCP, offsetof(struct trapframe, tf_ccp));
++
+ ASSYM(KF_TP, offsetof(struct kernframe, kf_tp));
+ #if __has_feature(capabilities) && !defined(__CHERI_PURE_CAPABILITY__)
+ ASSYM(KF_DDC, offsetof(struct kernframe, kf_ddc));
+diff --git a/sys/riscv/riscv/swtch.S b/sys/riscv/riscv/swtch.S
+index fcd4f79d7e7b..8aaca1326e05 100644
+--- a/sys/riscv/riscv/swtch.S
++++ b/sys/riscv/riscv/swtch.S
+@@ -319,6 +319,11 @@ ENTRY(cpu_throw)
+ 	clc	cra, (PCB_RA)(c13)
+ 	clc	csp, (PCB_SP)(c13)
+ 
++	/*Load colored cap register */
++	//cld s0, (PCB_CCP)(c13)
++	//csrw ccp, s0
++
++
+ 	/* s[0-11] */
+ 	clc	cs0, (PCB_S + 0 * 16)(c13)
+ 	clc	cs1, (PCB_S + 1 * 16)(c13)
+@@ -421,6 +426,10 @@ ENTRY(cpu_switch)
+ 	csc	cs9, (PCB_S + 9 * 16)(c13)
+ 	csc	cs10, (PCB_S + 10 * 16)(c13)
+ 	csc	cs11, (PCB_S + 11 * 16)(c13)
++
++	/*Store colored cap register */
++	//csrr s0, ccp
++	//csd s0, (PCB_CCP)(c13)
+ #else
+ 	/* Store ra, sp and the callee-saved registers */
+ 	sd	ra, (PCB_RA)(x13)
+@@ -557,11 +566,17 @@ ENTRY(cpu_switch)
+ 	ld	x13, TD_PCB(a1)
+ #endif
+ 
++
++
+ #ifdef __CHERI_PURE_CAPABILITY__
+ 	/* Restore the registers */
+ 	clc	cra, (PCB_RA)(c13)
+ 	clc	csp, (PCB_SP)(c13)
+ 
++	/*Load colored cap register */
++	//cld s0, (PCB_CCP)(c13)
++	//csrw ccp, s0
++
+ 	/* s[0-11] */
+ 	clc	cs0, (PCB_S + 0 * 16)(c13)
+ 	clc	cs1, (PCB_S + 1 * 16)(c13)
+@@ -684,6 +699,7 @@ ENTRY(fork_trampoline)
+ 	csc	ct0, (TF_SIZE + KF_DDC)(csp)
+ #endif
+ 
++
+ 	/*
+ 	 * Switch to user DDC.  After this point, all stack accesses
+ 	 * must use 'csp' instead of 'sp'.
+@@ -825,6 +841,10 @@ ENTRY(savectx)
+ 	csc	cs9, (PCB_S + 9 * 16)(ca0)
+ 	csc	cs10, (PCB_S + 10 * 16)(ca0)
+ 	csc	cs11, (PCB_S + 11 * 16)(ca0)
++
++	/*Store colored cap register */
++	//csrr s0, ccp
++	//csd s0, (PCB_CCP)(ca0)
+ #elif __has_feature(capabilities)
+ 	/* Store ra, sp and the callee-saved registers */
+ 	sc	cra, (PCB_RA)(a0)
+@@ -845,6 +865,10 @@ ENTRY(savectx)
+ 	sc	cs9, (PCB_S + 9 * 16)(a0)
+ 	sc	cs10, (PCB_S + 10 * 16)(a0)
+ 	sc	cs11, (PCB_S + 11 * 16)(a0)
++
++	/*Store colored cap register */
++	//csrr s0, ccp
++	//sd s0, (PCB_CCP)(a0)
+ #else
+ 	/* Store ra, sp and the callee-saved registers */
+ 	sd	ra, (PCB_RA)(a0)
+diff --git a/sys/riscv/riscv/trap.c b/sys/riscv/riscv/trap.c
+index 46da39fa7eff..7e00e2aabdf6 100644
+--- a/sys/riscv/riscv/trap.c
++++ b/sys/riscv/riscv/trap.c
+@@ -63,6 +63,7 @@
+ #include <cheri/cheric.h>
+ #ifdef CHERI_CAPREVOKE
+ #include <vm/vm_cheri_revoke.h>
++#include <vm/cc_revoke.h>
+ #endif
+ #endif
+ 
+@@ -374,12 +375,21 @@ page_fault_handler(struct trapframe *frame, int usermode)
+ 		if (stval >= VM_MIN_KERNEL_ADDRESS) {
+ 			map = kernel_map;
+ 		} else {
+-			if (pcb->pcb_onfault == 0)
++			if (pcb->pcb_onfault == 0){
++#ifdef CHERI_CAPREVOKE
++				u_long ccp = cc_read();
++				if(stval < ccp || stval > ccp+SEALING_BITMAP_SIZE){
++					goto fatal;
++				} else {
++					map = &p->p_vmspace->vm_map;
++				}
++#else
+ 				goto fatal;
++#endif
++			}
+ 			map = &p->p_vmspace->vm_map;
+ 		}
+ 	}
+-
+ 	va = trunc_page(stval);
+ 
+ #ifdef CHERI_CAPREVOKE
+@@ -415,8 +425,9 @@ page_fault_handler(struct trapframe *frame, int usermode)
+ 		ftype = VM_PROT_READ;
+ 	}
+ 
+-	if (VIRT_IS_VALID(va) && pmap_fault(map->pmap, va, ftype))
++	if (VIRT_IS_VALID(va) && pmap_fault(map->pmap, va, ftype)){
+ 		goto done;
++	}
+ 
+ #ifdef CHERI_CAPREVOKE
+ skip_pmap:
+diff --git a/sys/riscv/riscv/uio_machdep.c b/sys/riscv/riscv/uio_machdep.c
+index d59b08afcea0..0d4add758a95 100644
+--- a/sys/riscv/riscv/uio_machdep.c
++++ b/sys/riscv/riscv/uio_machdep.c
+@@ -142,6 +142,7 @@ uiomove_fromphys(vm_page_t ma[], vm_offset_t offset, int n, struct uio *uio)
+ 			    &vaddr, 1, true);
+ 			mapped = false;
+ 		}
++
+ 		IOVEC_ADVANCE(iov, cnt);
+ 		uio->uio_resid -= cnt;
+ 		uio->uio_offset += cnt;
+diff --git a/sys/sys/proc.h b/sys/sys/proc.h
+index 914f030cd95b..8e024e3918b9 100644
+--- a/sys/sys/proc.h
++++ b/sys/sys/proc.h
+@@ -749,6 +749,7 @@ struct proc {
+ 	vm_offset_t	p_psstrings;
+ #if __has_feature(capabilities)
+ 	struct cheri_c18n_info	*p_c18n_info;	/* (x) Compartment info block */
++
+ #endif
+ /* End area that is copied on creation. */
+ #define	p_endcopy	p_xexit
+@@ -783,6 +784,10 @@ struct proc {
+ 
+ 	TAILQ_HEAD(, kq_timer_cb_data)	p_kqtim_stop;	/* (c) */
+ 	LIST_ENTRY(proc) p_jaillist;	/* (d) Jail process linkage. */
++#ifdef CHERI_CAPREVOKE
++	uint64_t cheri_cc_sealing_base_copy;
++#endif
++
+ };
+ 
+ #define	p_session	p_pgrp->pg_session
+diff --git a/sys/sys/sysent.h b/sys/sys/sysent.h
+index 63be29543f07..f4444ba21ade 100644
+--- a/sys/sys/sysent.h
++++ b/sys/sys/sysent.h
+@@ -125,6 +125,8 @@ struct sysentvec {
+ 	vm_offset_t	sv_cheri_revoke_shadow_base;
+ 	vm_offset_t	sv_cheri_revoke_shadow_offset;
+ 	vm_offset_t	sv_cheri_revoke_shadow_length;
++	vm_offset_t	sv_cheri_cc_sealing_base;
++
+ 	vm_offset_t	sv_cheri_revoke_info_page;
+ #endif
+ 	size_t		sv_psstringssz;	/* PS_STRINGS size */
+diff --git a/sys/vm/cc_revoke.c b/sys/vm/cc_revoke.c
+new file mode 100644
+index 000000000000..7a043f773cef
+--- /dev/null
++++ b/sys/vm/cc_revoke.c
+@@ -0,0 +1,120 @@
++#include <sys/sysent.h>
++#include <vm/cc_revoke.h>
++#include <vm/vm_cheri_revoke.h>
++#include <vm/vm.h>
++#include <vm/vm_param.h>
++#include <vm/pmap.h>
++#include <vm/swap_pager.h>
++#include <vm/vm_map.h>
++#include <vm/vm_object.h>
++#include <vm/vm_extern.h>
++#include <vm/vm_page.h>
++
++
++int vm_map_install_cc_sealing_bitmap(struct vm_map *map, struct sysentvec *sv)
++{
++	int cow = MAP_CREATE_SHADOW;
++	int error = KERN_SUCCESS;
++	bool reserved_sealing_bitmap = false;
++	bool reserved_info = false;
++	vm_object_t vmo_sealing, vmo_info;
++	vm_pointer_t start;
++
++	vm_offset_t start_addr = sv->sv_cheri_cc_sealing_base;
++	vm_offset_t end_addr = start_addr + SEALING_BITMAP_SIZE;
++
++	vmo_sealing = vm_object_allocate(OBJT_SWAP, end_addr - start_addr);
++
++	vm_object_set_flag(vmo_sealing, OBJ_NOCAP);
++
++	vmo_info = vm_object_allocate(OBJT_SWAP, PAGE_SIZE);
++
++	vm_map_lock(map);
++
++	start = start_addr; /* upcast to NULL-derived cap */
++
++	error = vm_map_reservation_create_locked(map, &start,
++	    end_addr - start_addr, VM_PROT_READ | VM_PROT_WRITE);
++
++	KASSERT((ptraddr_t)start == start_addr,
++	    ("vm_map_reservation_create_locked moved revocation's cheese"));
++
++	if (error != KERN_SUCCESS)
++		goto out;
++
++	reserved_sealing_bitmap = true;
++
++	error = vm_map_insert(map, vmo_sealing, 0, start, end_addr,
++	    VM_PROT_READ | VM_PROT_WRITE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY,
++	    cow, start_addr);
++
++	if (error != KERN_SUCCESS)
++		goto out;
++
++	/* Now do the same thing for the info page */
++	start_addr = start = sv->sv_cheri_revoke_info_page;
++	end_addr = sv->sv_cheri_revoke_info_page + PAGE_SIZE;
++
++	error = vm_map_reservation_create_locked(map, &start,
++	    end_addr - start_addr,
++	    VM_PROT_READ | VM_PROT_WRITE);
++	reserved_info = true;
++
++	KASSERT((ptraddr_t)start == start_addr,
++	    ("vm_map_reservation_create_locked moved revocation's cheese"));
++
++	if (error != KERN_SUCCESS)
++		goto out;
++
++	error = vm_map_insert(map, vmo_info, 0, start, end_addr,
++	    VM_PROT_READ | VM_PROT_WRITE, VM_PROT_READ | VM_PROT_WRITE,
++	    0, start_addr);
++
++	if (error != KERN_SUCCESS)
++		goto out;
++
++out:
++	if (error != KERN_SUCCESS) {
++		int error2 __diagused;
++
++		if (reserved_info) {
++			error2 = vm_map_reservation_delete_locked(map,
++			    sv->sv_cheri_revoke_info_page);
++			KASSERT(error2 == KERN_SUCCESS,
++			    ("vm_map_install_cc_sealing_bitmap can't undo"));
++		}
++		if (reserved_sealing_bitmap) {
++			error2 = vm_map_reservation_delete_locked(map,
++			    sv->sv_cheri_cc_sealing_base);
++			KASSERT(error2 == KERN_SUCCESS,
++			    ("vm_map_install_cc_sealing_bitmap can't undo"));
++		}
++	}
++
++	vm_map_unlock(map);
++
++	if (error == KERN_SUCCESS) {
++		/* Initialize cheri_revoke info (map unlocked for copyout) */
++		struct cheri_revoke_info initinfo = {
++			.base_mem_nomap =
++			    sv->sv_cheri_cc_sealing_base +
++			    SEALING_BITMAP_SIZE,
++			.base_otype =
++			    sv->sv_cheri_cc_sealing_base +
++			    SEALING_BITMAP_SIZE -
++			    VM_CHERI_REVOKE_BSZ_OTYPE,
++			{0, 0}
++		};
++		struct cheri_revoke_info_page * __capability infopage;
++		vm_cheri_revoke_info_page(map, sv, &infopage);
++
++		error = copyout(&initinfo, infopage, sizeof(initinfo));
++		KASSERT(error == 0,
++		    ("vm_map_install_cc_sealing_bitmap copyout"));
++	} else {
++		vm_object_deallocate(vmo_sealing);
++		vm_object_deallocate(vmo_info);
++	}
++
++	return (error);
++}
+\ No newline at end of file
+diff --git a/sys/vm/cc_revoke.h b/sys/vm/cc_revoke.h
+new file mode 100644
+index 000000000000..58a6eb160b1b
+--- /dev/null
++++ b/sys/vm/cc_revoke.h
+@@ -0,0 +1,30 @@
++#ifndef	_CC_REVOKE_
++#define	_CC_REVOKE_
++
++#if __has_feature(capabilities)
++#include <cheri/cherireg.h> /* For CHERI_OTYPE_BITS */
++#endif
++#include <sys/malloc.h>
++
++static inline void cc_write(u_long val){
++    __asm __volatile("csrw ccp, %0" :: "r" (val));
++}
++
++static inline void cc_write_threshold(u_long val){
++    __asm __volatile("csrw ccpt, %0" :: "r" (val));
++}
++
++static inline u_long cc_read(void){
++    u_long val;
++    __asm __volatile("csrr %0, ccp" : "=r" (val));
++    return val;
++}
++struct vm_map;
++static const size_t SEALING_BITMAP_SIZE = ((1 << CHERI_OTYPE_BITS) / 8);
++
++int vm_map_install_cc_sealing_bitmap(struct vm_map *map, struct sysentvec *sv);
++
++void cc_dealloc_sealing_bitmap(struct proc* p);
++void cc_alloc_sealing_bitmap(struct proc* p);
++
++#endif
+\ No newline at end of file
+diff --git a/sys/vm/vm_cheri_revoke.c b/sys/vm/vm_cheri_revoke.c
+index 8686b6b8facf..bab961f7e118 100644
+--- a/sys/vm/vm_cheri_revoke.c
++++ b/sys/vm/vm_cheri_revoke.c
+@@ -50,6 +50,8 @@
+ #include <sys/sysctl.h>
+ #include <sys/sysent.h>
+ #include <sys/unistd.h>
++#include <sys/resourcevar.h>
++
+ 
+ #include <vm/vm.h>
+ #include <vm/vm_param.h>
+@@ -64,6 +66,7 @@
+ #include <cheri/revoke.h>
+ #include <cheri/revoke_kern.h>
+ #include <vm/vm_cheri_revoke.h>
++#include <vm/cc_revoke.h>
+ 
+ static void vm_cheri_revoke_pass_pre(vm_map_t);
+ static void vm_cheri_revoke_pass_post(vm_map_t);
+@@ -131,7 +134,6 @@ vm_cheri_revoke_pass_async_pre(vm_map_t map, struct vm_cheri_revoke_cookie *crc)
+ 
+ 	cheri_revoke_st_set(&map->vm_cheri_async_revoke_st, epoch + 1,
+ 	    CHERI_REVOKE_ST_INITED);
+-	map->vm_cheri_async_revoke_shadow = crc->crshadow;
+ }
+ 
+ static void
+@@ -1197,6 +1199,83 @@ vm_cheri_assert_consistent_clg(struct vm_map *map)
+ 	}
+ }
+ 
++
++/*
++//copy the sealing bitmap using CoW
++int vm_cheri_revoke_sealing_bitmap_copy(struct thread *td, vm_map_t map, struct vm_cheri_revoke_cookie* crc){
++	u_long sealing_bitmap_base = cc_read();
++
++	vm_map_entry_t entry;
++	vm_object_t obj;
++	vm_pindex_t pindex;
++	vm_prot_t prot;
++	boolean_t wired;
++
++	//int error = vm_map_protect(map, sealing_bitmap_base, sealing_bitmap_base+SEALING_BITMAP_SIZE, VM_PROT_READ | VM_PROT_COPY,  VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY, VM_MAP_PROTECT_SET_PROT);
++	int error = vm_map_lookup(&map, sealing_bitmap_base, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_COPY , &entry, &obj, &pindex, &prot, &wired);
++	if(error!=KERN_SUCCESS){
++		printf("failed1\n");
++		return KERN_FAILURE;
++	}
++
++	obj->ref_count++;
++	vm_map_lock_upgrade(map);
++	vm_map_unlock(map);
++	struct vmspace *vms = td->td_proc->p_vmspace;
++	vm_pointer_t addr = round_page((vm_offset_t)vms->vm_daddr + lim_max(td, RLIMIT_DATA));
++
++	error = vm_map_find(map, obj, 0, &addr, SEALING_BITMAP_SIZE, 0, VMFS_ANY_SPACE, VM_PROT_READ|VM_PROT_COPY| VM_PROT_WRITE, VM_PROT_READ|VM_PROT_COPY| VM_PROT_WRITE, MAP_COPY_ON_WRITE);
++	if(error!=KERN_SUCCESS){
++		printf("failed\n");
++		return KERN_FAILURE;
++	}
++
++	crc->sealing_bitmap_copy = addr;
++	return KERN_SUCCESS;
++}
++*/
++
++//copy the sealing bitmap
++int vm_cheri_revoke_sealing_bitmap_copy(struct thread *td, vm_map_t map, struct vm_cheri_revoke_cookie* crc){
++	u_long sealing_bitmap_base = cc_read();
++	struct vmspace *vms = td->td_proc->p_vmspace;
++	vm_pointer_t addr = round_page((vm_offset_t)vms->vm_daddr + lim_max(td, RLIMIT_DATA));
++
++
++	vm_object_t vmo_sealing_copy = vm_object_allocate(OBJT_SWAP, SEALING_BITMAP_SIZE);
++	int error = vm_map_find(map, vmo_sealing_copy, 0, &addr, SEALING_BITMAP_SIZE, 0, VMFS_ANY_SPACE, VM_PROT_READ| VM_PROT_WRITE, VM_PROT_READ| VM_PROT_WRITE, MAP_COPY_ON_WRITE);
++	if (error != KERN_SUCCESS) {
++		vm_object_deallocate(vmo_sealing_copy);
++		printf("failed\n");
++		return KERN_FAILURE;
++	}
++
++	for (int offset = 0; offset < SEALING_BITMAP_SIZE; offset += PAGE_SIZE) {
++		ptraddr_t vaddr_old = sealing_bitmap_base + offset;
++		ptraddr_t vaddr_new = addr + offset;
++		void* __capability vaddr_old_cap = cheri_capability_build_user_data(CHERI_PERM_LOAD | CHERI_PERM_STORE | CHERI_PERM_GLOBAL, 
++			vaddr_old, SEALING_BITMAP_SIZE, 0);
++		void* __capability vaddr_new_cap = cheri_capability_build_user_data(CHERI_PERM_LOAD | CHERI_PERM_STORE | CHERI_PERM_GLOBAL, 
++			vaddr_new, SEALING_BITMAP_SIZE, 0);
++		void* kernel_buf = malloc(PAGE_SIZE, M_TEMP, M_WAITOK | M_ZERO);
++		error = copyin(vaddr_old_cap, kernel_buf, PAGE_SIZE);
++		if (error) {
++			free(kernel_buf, M_TEMP);
++			return KERN_FAILURE;
++		}
++		error = copyout(kernel_buf, vaddr_new_cap, PAGE_SIZE);
++		if (error) {
++			free(kernel_buf, M_TEMP);
++			return KERN_FAILURE;
++		}
++		free(kernel_buf, M_TEMP);
++	}
++	
++	crc->sealing_bitmap_copy = addr;
++	return KERN_SUCCESS;
++}
++
++
+ /*
+  * XXX Should this encapsulate a barrier around epochs and stat collection and
+  * all that?  I don't think there are any meaningful races around epoch close,
+@@ -1212,31 +1291,6 @@ vm_cheri_revoke_cookie_init(vm_map_t map, struct vm_cheri_revoke_cookie *crc)
+ 		return (KERN_INVALID_ARGUMENT);
+ 
+ 	crc->map = map;
+-	if ((curproc->p_flag & P_SYSTEM) != 0) {
+-		KASSERT(map->vm_cheri_async_revoke_shadow != NULL,
+-		    ("cheri_revoke_shadow not installed in kernel map"));
+-		crc->crshadow = map->vm_cheri_async_revoke_shadow;
+-		return (KERN_SUCCESS);
+-	}
+-
+-	/*
+-	 * Build the capability to the shadow bitmap that we will use for probes
+-	 * during this revocation pass or fault.  We are holding the map xlocked
+-	 * at this point, so we cannot use any of the checked constructors,
+-	 * which, with INVARIANTS, try to validate that the cap does not span
+-	 * reservations and, so, slock the map; WITNESS sensibly objects.
+-	 *
+-	 * TODO:
+-	 * For foreign maps, we should take advantage of map->vm_cheri_revoke_sh
+-	 * and construct a mapping in the local address space to manipulate
+-	 * the remote one!
+-	 */
+-	crc->crshadow = cheri_capability_build_user_rwx_unchecked(
+-	    CHERI_PERM_LOAD | CHERI_PERM_GLOBAL,
+-	    curproc->p_sysent->sv_cheri_revoke_shadow_base,
+-	    curproc->p_sysent->sv_cheri_revoke_shadow_length,
+-	    curproc->p_sysent->sv_cheri_revoke_shadow_offset);
+-
+ 	return (KERN_SUCCESS);
+ }
+ 
+diff --git a/sys/vm/vm_cheri_revoke.h b/sys/vm/vm_cheri_revoke.h
+index 038e20767d4a..6c3fac1ea1ae 100644
+--- a/sys/vm/vm_cheri_revoke.h
++++ b/sys/vm/vm_cheri_revoke.h
+@@ -87,13 +87,16 @@ cheri_revoke_cap(uintcap_t c)
+ static const size_t VM_CHERI_REVOKE_GSZ_MEM_MAP = PAGE_SIZE;
+ 
+ struct vm_cheri_revoke_cookie {
+-	const uint8_t * __capability crshadow;
+ 	struct vm_map		*map;
++	uint64_t sealing_bitmap_copy;
++	
+ };
+ 
+ int vm_cheri_revoke_cookie_init(struct vm_map *map,
+     struct vm_cheri_revoke_cookie *baked);
+ 
++int vm_cheri_revoke_sealing_bitmap_copy(struct thread *td, struct vm_map* map, struct vm_cheri_revoke_cookie* crc);
++
+ void vm_cheri_revoke_info_page(struct vm_map *map, struct sysentvec *,
+     struct cheri_revoke_info_page * __capability *);
+ 
+diff --git a/sys/vm/vm_fault.c b/sys/vm/vm_fault.c
+index e78f977a22cf..7979b60bcb05 100644
+--- a/sys/vm/vm_fault.c
++++ b/sys/vm/vm_fault.c
+@@ -100,6 +100,7 @@
+ #include <cheri/revoke.h>
+ #include <cheri/revoke_kern.h>
+ #include <vm/vm_cheri_revoke.h>
++#include <vm/cc_revoke.h>
+ #endif
+ 
+ #include <vm/vm.h>
+@@ -1851,8 +1852,10 @@ vm_fault(vm_map_t map, vm_offset_t vaddr, vm_prot_t fault_type,
+ 	hardfault = false;
+ 
+ RetryFault:
++
+ 	fs.fault_type = fault_type;
+ 
++
+ 	/*
+ 	 * Find the backing store object and offset into it to begin the
+ 	 * search.
+diff --git a/sys/vm/vm_map.h b/sys/vm/vm_map.h
+index 9a09599fec2b..c05ac832815f 100644
+--- a/sys/vm/vm_map.h
++++ b/sys/vm/vm_map.h
+@@ -201,9 +201,8 @@ vm_map_entry_system_wired_count(vm_map_entry_t entry)
+  *
+  * Returns any nonzero value to indicate revocation required.
+  */
+-typedef unsigned long (*vm_cheri_revoke_test_fn)(
+-    const uint8_t * __capability shadow, uintcap_t cut, unsigned long cutperm,
+-    vm_offset_t start, vm_offset_t end);
++typedef unsigned long (*vm_cheri_revoke_test_fn)(uintcap_t cut, unsigned long cutperm,
++    vm_offset_t start, vm_offset_t end, uint64_t sealing_bitmap);
+ 
+ #ifdef CHERI_CAPREVOKE_STATS
+ struct cheri_revoke_stats;
+diff --git a/test.txt b/test.txt
+new file mode 100644
+index 000000000000..3d71e01c9971
+--- /dev/null
++++ b/test.txt
+@@ -0,0 +1,945 @@
++diff --git a/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td b/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
++index a836227e18..2c77ff32ca 100644
++--- a/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
+++++ b/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
++@@ -295,6 +295,8 @@ foreach i = 3...31 in
++   def : SysReg<"mhpmcounter"#i#"h", !add(0xB83, !sub(i, 3))>;
++ }
++ 
+++def : SysReg<"ccp", 0x7C0>
+++
++ //===----------------------------------------------------------------------===//
++ // Machine Counter Setup
++ //===----------------------------------------------------------------------===//
++diff --git a/include/malloc_np.h b/include/malloc_np.h
++index f04af193a3..2f2aab6362 100644
++--- a/include/malloc_np.h
+++++ b/include/malloc_np.h
++@@ -95,6 +95,7 @@ int	mallctlbymib(const size_t *mib, size_t miblen, void *oldp,
++ #define	MALLOCX_ARENA(a)	((((int)(a))+1) << 20)
++ 
++ void	*mallocx(size_t size, int flags);
+++void	*malloc2(size_t size);
++ void	*rallocx(void *ptr, size_t size, int flags);
++ size_t	xallocx(void *ptr, size_t size, size_t extra, int flags);
++ size_t	sallocx(const void *ptr, int flags);
++diff --git a/include/stdlib.h b/include/stdlib.h
++index b802a17e4d..8ca0a543ce 100644
++--- a/include/stdlib.h
+++++ b/include/stdlib.h
++@@ -98,6 +98,8 @@ char	*getenv(const char *);
++ long	 labs(long) __pure2;
++ ldiv_t	 ldiv(long, long) __pure2;
++ void	*malloc(size_t) __malloc_like __result_use_check __alloc_size(1);
+++void* malloc2(size_t) __malloc_like __result_use_check __alloc_size(1);
+++
++ void	 malloc_revoke(void)
++ 	    __deprecated1("use malloc_revoke_quarantine_force_flush() instead");
++ int	 malloc_revoke_quarantine_force_flush(void);
++diff --git a/lib/libc/stdlib/malloc/Makefile.inc b/lib/libc/stdlib/malloc/Makefile.inc
++index a5f141f712..77560d09c1 100644
++--- a/lib/libc/stdlib/malloc/Makefile.inc
+++++ b/lib/libc/stdlib/malloc/Makefile.inc
++@@ -4,7 +4,7 @@ SYM_MAPS+=${LIBC_SRCTOP}/stdlib/malloc/Symbol.map
++ 
++ MAN+=		malloc_revoke.3
++ MLINKS+=	malloc_revoke.3 malloc_is_revoking.3
++-MLINKS+=	malloc_revoke.3 malloc_revoke_enabled.3
+++MLINKS+=	malloc_revoke.3 malloc_revoke_enabled.3 malloc2.3
++ MLINKS+=	malloc_revoke.3 malloc_revoke_quarantine_force_flush.3
++ 
++ .if ${MK_MALLOC_REVOCATION_SHIM} == no || !${MACHINE_ABI:Mpurecap}
++diff --git a/lib/libc/stdlib/malloc/Symbol.map b/lib/libc/stdlib/malloc/Symbol.map
++index b9a1f8251e..8be25f9a9d 100644
++--- a/lib/libc/stdlib/malloc/Symbol.map
+++++ b/lib/libc/stdlib/malloc/Symbol.map
++@@ -6,6 +6,7 @@ FBSD_1.0 {
++ 	calloc;
++ 	realloc;
++ 	free;
+++  malloc2;
++ 	malloc_usable_size;
++ 	malloc_revoke;
++ 	malloc_is_revoking;
++diff --git a/lib/libc/stdlib/malloc/malloc_revoke.c b/lib/libc/stdlib/malloc/malloc_revoke.c
++index 9326f12a83..7409ce1aba 100644
++--- a/lib/libc/stdlib/malloc/malloc_revoke.c
+++++ b/lib/libc/stdlib/malloc/malloc_revoke.c
++@@ -44,6 +44,8 @@ malloc_revoke(void)
++ {
++ }
++ 
+++
+++
++ bool malloc_is_revoking(void);
++ bool
++ malloc_is_revoking(void)
++diff --git a/lib/libc/stdlib/malloc/mrs/mrs.3 b/lib/libc/stdlib/malloc/mrs/mrs.3
++index e76cd749c5..f01b3a9e70 100644
++--- a/lib/libc/stdlib/malloc/mrs/mrs.3
+++++ b/lib/libc/stdlib/malloc/mrs/mrs.3
++@@ -41,6 +41,7 @@
++ .In stdlib.h
++ .Ft void *
++ .Fn malloc "size_t size"
+++.Fn malloc2 "size_t size"
++ .Ft void *
++ .Fn calloc "size_t number, size_t size"
++ .Ft int
++@@ -173,6 +174,7 @@ interface which takes a capability passed to
++ .Fn free
++ or
++ .Fn realloc
+++.Fn malloc2
++ and returns a capability to the underlying allocator bearing the
++ .Dt CHERI_PERM_SW_VMEM
++ permission.
++@@ -201,6 +203,7 @@ To override the system default and binary settings run the program as follows:
++ currently has a single quarantine queue protected by a mutex.
++ For multi-threaded applications where concurent
++ .Xr malloc 3
+++.Xr malloc2 3
++ performance is important, this will be a significant bottleneck.
++ .Sh AUTHORS
++ This software and this manual page were
++diff --git a/lib/libc/stdlib/malloc/mrs/mrs.c b/lib/libc/stdlib/malloc/mrs/mrs.c
++index eab718db0f..3ce978fb23 100644
++--- a/lib/libc/stdlib/malloc/mrs/mrs.c
+++++ b/lib/libc/stdlib/malloc/mrs/mrs.c
++@@ -176,7 +176,7 @@ void REAL(sdallocx)(void *, size_t, int);
++  */
++ 
++ /* functions */
++-
+++static void* cc_set_objectid(void* p);
++ static void *mrs_malloc(size_t);
++ static void mrs_free(void *);
++ static void *mrs_calloc(size_t, size_t);
++@@ -184,6 +184,7 @@ static void *mrs_realloc(void *, size_t);
++ static int mrs_posix_memalign(void **, size_t, size_t);
++ static void *mrs_aligned_alloc(size_t, size_t);
++ 
+++extern void *malloc2(size_t); 
++ void *mrs_mallocx(size_t, int);
++ void *mrs_rallocx(void *, size_t, int);
++ void mrs_dallocx(void *, int);
++@@ -317,6 +318,7 @@ static size_t page_size;
++ 
++ /* Flags are constant after initialization. */
++ static void *entire_shadow;
+++static void* sealing_bitmap;
++ static bool quarantining = true;
++ static bool revoke_every_free = false;
++ static bool revoke_async = false;
++@@ -752,6 +754,8 @@ validate_freed_pointer(void *ptr)
++ 	 * actually a 16-byte multiple because all allocations will be 16-byte
++ 	 * aligned.
++ 	 */
+++
+++	/*
++ 	if (caprev_shadow_nomap_set_len(cri->base_mem_nomap, entire_shadow,
++ 	    cheri_getbase(ptr),
++ 	    __builtin_align_up(cheri_getlen(underlying_allocation),
++@@ -759,6 +763,19 @@ validate_freed_pointer(void *ptr)
++ 		mrs_debug_printf("validate_freed_pointer: setting bitmap failed\n");
++ 		return (NULL);
++ 	}
+++	*/
+++
+++	int otype = cheri_gettype(ptr);
+++	int byte_offset = otype/8;
+++	int bit_offset = otype%8;
+++	char sealing_byte = ((char*)sealing_bitmap)[byte_offset];
+++	//verify that memory is not already sealed
+++	if((sealing_byte<<bit_offset)&1){
+++		mrs_debug_printf("validate_freed_pointer: memory already freed\n");
+++		return (NULL);
+++	}
+++	//set sealing bitmap value
+++	((char*)sealing_bitmap)[byte_offset] = sealing_byte | (1<<bit_offset);
++ 
++ 	return (underlying_allocation);
++ }
++@@ -1431,6 +1448,11 @@ mrs_init_impl_locked(void)
++ 		exit(7);
++ 	}
++ 
+++	if (cheri_revoke_get_shadow(CHERI_CC_SEALING_BITMAP, NULL,
+++	    &sealing_bitmap) != 0) {
+++		mrs_puts("error getting sealing bitmap cap\n");
+++		exit(7);
+++	}
++ 	for (int i = 0; i < APP_QUARANTINE_ARENAS; i++) {
++ 		app_quarantine_store[i].revoking = false;
++ 		if (i > 0) {
++@@ -1439,7 +1461,7 @@ mrs_init_impl_locked(void)
++ 		}
++ 	}
++ 	app_quarantine = &app_quarantine_store[0];
++-	init_unrhdr(&cheri_otypes, CHERI_OTYPE_USER_MIN, CHERI_OTYPE_USER_MAX, NULL);
+++	init_unrhdr(&cheri_otypes, 100, CHERI_OTYPE_USER_MAX, NULL);
++ nosys:
++ 	mrs_initialized = true;
++ 
++@@ -1490,6 +1512,14 @@ fini(void)
++ }
++ #endif /* PRINT_STATS */
++ 
+++/* Colored capabilities*/
+++static void* cc_set_objectid(void* p){
+++	int otype = alloc_unr(&cheri_otypes);
+++	assert(otype != -1);
+++   	p = __builtin_cheri_cc_set_type(p, otype);
+++	return p;
+++}
+++
++ /* mrs functions */
++ 
++ static void *
++@@ -1522,17 +1552,19 @@ mrs_malloc(size_t size)
++ 	 * of the currently supported allocators do.
++ 	 */
++ 
++-	alloc_unr(&cheri_otypes);
++ 	if (size < CAPREVOKE_BITMAP_ALIGNMENT)
++ 		allocated_region = mrs_real_malloc(CAPREVOKE_BITMAP_ALIGNMENT);
++ 	else
++ 		allocated_region = mrs_real_malloc(size);
+++	
++ 	if (allocated_region == NULL) {
++ 		MRS_UTRACE(UTRACE_MRS_MALLOC, NULL, size, 0,
++ 		    allocated_region);
++ 		return (allocated_region);
++ 	}
++ 
+++
+++
++ #ifdef CLEAR_ON_ALLOC
++ 	clear_region(allocated_region, cheri_getlen(allocated_region));
++ #endif /* CLEAR_ON_ALLOC */
++@@ -1542,10 +1574,63 @@ mrs_malloc(size_t size)
++ 	/*mrs_debug_printf("mrs_malloc: called size 0x%zx, allocation %#p\n",
++ 	    size, allocated_region);*/
++ 
+++	//void* new_allocated_region = cc_set_objectid(allocated_region);
+++	//assert(new_allocated_region==allocated_region);
+++
++ 	MRS_UTRACE(UTRACE_MRS_MALLOC, NULL, size, 0, allocated_region);
++ 	return (allocated_region);
++ }
++ 
+++void * malloc2(size_t size)
+++{
+++// 	mrs_init();
+++
+++// 	if (!quarantining)
+++// 		return (mrs_real_malloc(size));
+++
+++// 	/*mrs_debug_printf("mrs_malloc: called\n");*/
+++
+++// 	check_and_perform_flush(false);
+++
+++ 	void *allocated_region;
+++
+++// 	/*
+++// 	 * Round up here to make sure there is only one allocation per
+++// 	 * granule without requiring modifications to the underlying
+++// 	 * allocator.
+++// 	 *
+++// 	 * XXX: If an allocator produced special, non-writable capabilities
+++// 	 * for size=0 we might want to pass those calls through, but none
+++// 	 * of the currently supported allocators do.
+++// 	 */
+++
+++// 	if (size < CAPREVOKE_BITMAP_ALIGNMENT)
+++// 		allocated_region = mrs_real_malloc(CAPREVOKE_BITMAP_ALIGNMENT);
+++// 	else
+++// 		allocated_region = mrs_real_malloc(size);
+++	
+++// 	if (allocated_region == NULL) {
+++// 		MRS_UTRACE(UTRACE_MRS_MALLOC, NULL, size, 0,
+++// 		    allocated_region);
+++// 		return (allocated_region);
+++// 	}
+++
+++
+++
+++// #ifdef CLEAR_ON_ALLOC
+++// 	clear_region(allocated_region, cheri_getlen(allocated_region));
+++// #endif /* CLEAR_ON_ALLOC */
+++
+++// 	increment_allocated_size(allocated_region);
+++
+++// 	/*mrs_debug_printf("mrs_malloc: called size 0x%zx, allocation %#p\n",
+++// 	    size, allocated_region);*/
+++
+++// 	allocated_region = cc_set_objectid(allocated_region);
+++
+++	return (allocated_region);
+++}
+++
++ static void *
++ mrs_real_calloc(size_t number, size_t size)
++ {
++@@ -1586,12 +1671,16 @@ mrs_calloc(size_t number, size_t size)
++ 		allocated_region = mrs_real_calloc(1, CAPREVOKE_BITMAP_ALIGNMENT);
++ 	else
++ 		allocated_region = mrs_real_calloc(number, size);
+++	
+++
++ 	if (allocated_region == NULL) {
++ 		MRS_UTRACE(UTRACE_MRS_CALLOC, NULL, size, number,
++ 		    allocated_region);
++ 		return (allocated_region);
++ 	}
++ 
+++
+++
++ 	increment_allocated_size(allocated_region);
++ 
++ 	/*
++@@ -1599,9 +1688,11 @@ mrs_calloc(size_t number, size_t size)
++ 	 * the thread library.
++ 	 */
++ 	/*mrs_debug_printf("mrs_calloc: exit called %d size 0x%zx address %p\n", number, size, allocated_region);*/
++-
+++	void* new_allocated_region = cc_set_objectid(allocated_region);
+++	assert(new_allocated_region==allocated_region);
+++	
++ 	MRS_UTRACE(UTRACE_MRS_CALLOC, NULL, size, number, allocated_region);
++-	return (allocated_region);
+++	return (new_allocated_region);
++ }
++ 
++ static int
++@@ -1776,11 +1867,11 @@ mrs_free(void *ptr)
++ #ifdef CLEAR_ON_FREE
++ 	bzero(cheri_setoffset(ptr, 0), cheri_getlen(ptr));
++ #endif
++-
+++/*
++ 	mrs_lock(&app_quarantine_lock);
++ 	quarantine_insert(app_quarantine, ins, cheri_getlen(ins));
++ 	mrs_unlock(&app_quarantine_lock);
++-
+++*/
++ 	check_and_perform_flush(true);
++ }
++ 
++diff --git a/lib/libc/stdlib/u_subr_unit.c b/lib/libc/stdlib/u_subr_unit.c
++index bb254c95e9..94d1db4795 100644
++--- a/lib/libc/stdlib/u_subr_unit.c
+++++ b/lib/libc/stdlib/u_subr_unit.c
++@@ -1014,6 +1014,87 @@ free_unr(struct unrhdr *uh, u_int item)
++ 		Free(p2);
++ }
++ 
+++
+++/* given a pointer to the sealed bitmap (1 needs to be freed and 0 stays allocated) return the vector with the sizes of the new allocations*/
+++/*
+++static void free_many_unrl(struct unrhdr* uh, char* sealing_bitmap, int sealing_bitmap_size){
+++	int* new_unrhdr = (int*) malloc(4096+(uh->alloc*sizeof(int)));
+++	int new_unrhdr_index = 0;
+++	int new_unrhdr_size = 4096+(uh->alloc*sizeof(int));
+++	int new_unrhdr_state = 1; //1 == allocated, 0 = free
+++	new_unrhdr[0] = 0;
+++
+++	struct unr* current_unr = NULL;
+++	int current_unr_index = 0;
+++	int current_unr_size = uh->first;
+++	int current_unr_state = 1; //1 == allocated, 0 = free, 2 = bitmap
+++
+++
+++
+++	//iterate over every bit of the bitmap
+++	for(int i = 0;i<sealing_bitmap_size*8;i++){
+++		int sealing_bit = get_sealing_bit(sealing_bitmap, sealing_bitmap_size, i); // 1 == needs to be freed, 0 == stays allocated
+++
+++		if(get_new_state(sealing_bit, current_unr_state) == new_unrhdr_state){
+++			new_unrhdr[new_unrhdr_index]++;
+++		}else{
+++			if(new_unrhdr_index==new_unrhdr_size){
+++				new_unrhdr = realloc(new_unrhdr, new_unrhdr_size+4096);
+++			}
+++			new_unrhdr_index++;
+++			new_unrhdr[new_unrhdr_index] = 0;
+++			new_unrhdr_state = !new_unrhdr_state;
+++		}
+++
+++		current_unr_index++;
+++		if(current_unr_index>=current_unr_size){
+++			if(TAILQ_NEXT(current_unr, list)){
+++				current_unr = TAILQ_FIRST(&uh->head);
+++			}else if(current_unr==NULL){
+++				//final
+++			}else{
+++				current_unr = TAILQ_NEXT(current_unr, list);
+++			}
+++			current_unr_index = 0;
+++			if(is_bitmap(current_unr, uh)){
+++				//current_unr_size = sizeof(struct unrb)*8;
+++				KASSERT(0, ("not implemented"));
+++			}else{
+++				current_unr_size = current_unr->len;
+++				current_unr_state = (current_unr->ptr!=NULL);
+++			}
+++		}
+++	}
+++}
+++*/
+++
+++static int get_sealing_bit(char* sealing_bitmap, int sealing_bitmap_size, int index){
+++	KASSERT(index < sealing_bitmap_size, ("saeling bitmap out of bounds"));
+++	int byte_offset = index/8;
+++	int bit_offset = index%8;
+++	return (sealing_bitmap[byte_offset]<<(bit_offset))&1;
+++}
+++
+++static int get_new_state(int sealing_bit, int unr_state){
+++	if(sealing_bit==1){
+++		KASSERT(unr_state==1, ("illigal state transition"));
+++		return 0;
+++	}else{
+++		return unr_state;
+++	}
+++}
+++
+++
+++/*
+++void free_many_unr(struct unrhdr* uh, void* sealing_bitmap, int sealing_bitmap_size){
+++	if (uh->mtx != NULL)
+++		mtx_lock(uh->mtx);
+++	free_many_unrl(uh, sealing_bitmap, sealing_bitmap_size);
+++	if (uh->mtx != NULL)
+++		mtx_unlock(uh->mtx);
+++}
+++*/
+++
++ #ifdef _KERNEL
++ #include "opt_ddb.h"
++ #ifdef DDB
++diff --git a/libexec/Makefile b/libexec/Makefile
++index 7a883fbe97..12a7ed8ab4 100644
++--- a/libexec/Makefile
+++++ b/libexec/Makefile
++@@ -125,7 +125,7 @@ _tests=		tests
++ 
++ .if ${MACHINE_CPU:Mcheri}
++ SUBDIR+=	malloc_early_constructor
++-SUBDIR+=	malloc_revoke_enabled
+++SUBDIR+=	malloc_revoke_enabled 
++ .endif
++ 
++ .if ${MK_NUAGEINIT} != "no"
++diff --git a/sys/arm64/include/cherireg.h b/sys/arm64/include/cherireg.h
++index 6caca2a9dc..f6dd20bace 100644
++--- a/sys/arm64/include/cherireg.h
+++++ b/sys/arm64/include/cherireg.h
++@@ -128,7 +128,7 @@
++ 
++ #define	CHERI_PERMS_USERSPACE_CODE					\
++ 	(CHERI_PERMS_USERSPACE | CHERI_PERM_EXECUTE |			\
++-	CHERI_PERM_EXECUTIVE | CHERI_PERM_MUTABLE_LOAD)
+++	CHERI_PERM_EXECUTIVE | CHERI_PERM_MUTABLE_LOAD | CHERI_PERM_SYSTEM_REGS)
++ 
++ #define	CHERI_PERMS_USERSPACE_SEALCAP					\
++ 	(CHERI_PERM_GLOBAL | CHERI_PERM_SEAL | CHERI_PERM_UNSEAL)
++diff --git a/sys/cheri/revoke.h b/sys/cheri/revoke.h
++index fe7cf80d27..46583e4c31 100644
++--- a/sys/cheri/revoke.h
+++++ b/sys/cheri/revoke.h
++@@ -300,8 +300,10 @@ struct cheri_revoke_syscall_info {
++  * minimal-bookkeeping version of libmrs uses this, and that's very convenient.
++  */
++ #define	CHERI_REVOKE_SHADOW_NOVMEM_ENTIRE	0x07	/* The entire shadow region */
+++ 
+++#define CHERI_CC_SEALING_BITMAP				0x08    /* Colored capability sealing bitmap */
++ 
++-#define	CHERI_REVOKE_SHADOW_SPACE_MASK		0x07	/* Flag bits for shadow index */
+++#define	CHERI_REVOKE_SHADOW_SPACE_MASK		0xf	/* Flag bits for shadow index */
++ 
++ #ifndef _KERNEL
++ /*
++diff --git a/sys/conf/files b/sys/conf/files
++index 5c0ac69a42..0dbedc5f24 100644
++--- a/sys/conf/files
+++++ b/sys/conf/files
++@@ -396,7 +396,7 @@ cheri/cheri_tags.c			optional cpu_cheri
++ cheri/cheri_usercap.c			optional cpu_cheri
++ 
++ vm/vm_cheri_revoke.c			optional cpu_cheri cheri_caprevoke
++-vm/cc_revoke.c					optional cpu_cheri cheri_cc
+++vm/cc_revoke.c					optional cpu_cheri cheri_caprevoke
++ 
++ # dtrace specific
++ cddl/contrib/opensolaris/uts/common/dtrace/dtrace.c	optional dtrace compile-with "${DTRACE_C}" \
++diff --git a/sys/kern/kern_cheri_revoke.c b/sys/kern/kern_cheri_revoke.c
++index c36258b617..a04eb5c17a 100644
++--- a/sys/kern/kern_cheri_revoke.c
+++++ b/sys/kern/kern_cheri_revoke.c
++@@ -60,6 +60,8 @@
++ #include <vm/vm_cheri_revoke.h>
++ #include <sys/syscallsubr.h>
++ 
+++#include <vm/cc_revoke.h>
+++
++ /*
++  * We reserve the FEATURE(cheri_revoke) and VM SYSCTL() namespace cheri_revoke
++  * for the real implementation.
++@@ -825,6 +827,14 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
++ 			sel, 0, 0, 0);
++ 		break;
++ 	    }
+++	case CHERI_CC_SEALING_BITMAP:
+++		{
+++		struct sysentvec* sv = curproc->p_sysent;
+++		vm_offset_t cc_sealing_base = sv->sv_cheri_cc_sealing_base;
+++		cres = cheri_capability_build_user_data(CHERI_PERM_LOAD | CHERI_PERM_STORE | CHERI_PERM_GLOBAL,
+++		    cc_sealing_base, SEALING_BITMAP_SIZE, 0);
+++		break;
+++		}
++ 	default:
++ 		return (EINVAL);
++ 	}
++diff --git a/sys/kern/kern_exec.c b/sys/kern/kern_exec.c
++index b1b491d933..0aa3da1a67 100644
++--- a/sys/kern/kern_exec.c
+++++ b/sys/kern/kern_exec.c
++@@ -1360,6 +1360,11 @@ exec_map_stack(struct image_params *imgp)
++ 	if (sv->sv_flags & SV_CHERI) {
++ 		error = vm_map_install_cheri_revoke_shadow(map, sv);
++ 
+++		if (error != KERN_SUCCESS)
+++			return (vm_mmap_to_errno(error));
+++
+++		error = vm_map_install_cc_sealing_bitmap(map, sv);
+++
++ 		if (error != KERN_SUCCESS)
++ 			return (vm_mmap_to_errno(error));
++ 	}
++diff --git a/sys/kern/kern_exit.c b/sys/kern/kern_exit.c
++index 9aa22e03d4..4a4637aa5b 100644
++--- a/sys/kern/kern_exit.c
+++++ b/sys/kern/kern_exit.c
++@@ -489,11 +489,6 @@ exit1(struct thread *td, int rval, int signo)
++ 	 * revoke control tty if exiting process was a session leader.
++ 	 */
++ 	killjobc();
++-
++-#ifdef CHERI_CAPREVOKE
++-	cc_dealloc_sealing_bitmap(p);
++-#endif
++-
++ 	/*
++ 	 * Reparent all children processes:
++ 	 * - traced ones to the original parent (or init if we are that parent)
++diff --git a/sys/kern/kern_fork.c b/sys/kern/kern_fork.c
++index ba09d4490e..4d4ed9f917 100644
++--- a/sys/kern/kern_fork.c
+++++ b/sys/kern/kern_fork.c
++@@ -1039,9 +1039,6 @@ fork1(struct thread *td, struct fork_req *fr)
++ 		if (error != 0)
++ 			goto fail2;
++ 	}
++-#ifdef CHERI_CAPREVOKE
++-	cc_alloc_sealing_bitmap(td2->td_proc);
++-#endif
++ 
++ 	if ((flags & RFMEM) == 0) {
++ 		vm2 = vmspace_fork(p1->p_vmspace, &mem_charged);
++@@ -1114,11 +1111,6 @@ fork1(struct thread *td, struct fork_req *fr)
++ 		fdclose(td, fp_procdesc, *fr->fr_pd_fd);
++ 		fdrop(fp_procdesc, td);
++ 	}
++-#ifdef CHERI_CAPREVOKE
++-	if(td2 != NULL && td2->td_proc != 0){
++-		cc_dealloc_sealing_bitmap(td2->td_proc);
++-	}
++-#endif
++ 	atomic_add_int(&nprocs, -1);
++ cleanup:
++ 	if (killsx_locked)
++diff --git a/sys/riscv/include/encoding.h b/sys/riscv/include/encoding.h
++index 6940bf75be..550d00b2bc 100644
++--- a/sys/riscv/include/encoding.h
+++++ b/sys/riscv/include/encoding.h
++@@ -740,7 +740,7 @@
++ #define CSR_MHPMCOUNTER29H 0xb9d
++ #define CSR_MHPMCOUNTER30H 0xb9e
++ #define CSR_MHPMCOUNTER31H 0xb9f
++-#define CSR_CCP 0x7C0
+++#define CSR_CCP 0x012
++ #define CAUSE_MISALIGNED_FETCH 0x0
++ #define CAUSE_FETCH_ACCESS 0x1
++ #define CAUSE_ILLEGAL_INSTRUCTION 0x2
++diff --git a/sys/riscv/riscv/elf_machdep.c b/sys/riscv/riscv/elf_machdep.c
++index cef5b7e1d6..3d04915058 100644
++--- a/sys/riscv/riscv/elf_machdep.c
+++++ b/sys/riscv/riscv/elf_machdep.c
++@@ -199,11 +199,17 @@ elf64_register_sysvec(void *arg)
++ 	 * just defined.
++ 	 */
++ 	sv->sv_cheri_revoke_shadow_offset =
++-	    shadow_representable_size - shadow_fine_mem_size;
+++	   shadow_representable_size - shadow_fine_mem_size;
++ 
++ 	/* It's ugly, but simple: manage the info page as a separate object */
++ 	sv->sv_cheri_revoke_info_page =
++ 	    sv->sv_cheri_revoke_shadow_base - PAGE_SIZE;
+++
+++	//Colored capabilities bimap
+++	//put the bitmap at the top of the user space stack under the shadow bitmap
+++	const ptraddr_t cheri_cc_sealing_top = sv->sv_cheri_revoke_info_page & ~(SEALING_BITMAP_SIZE - 1); 
+++	sv->sv_cheri_cc_sealing_base = cheri_cc_sealing_top - SEALING_BITMAP_SIZE; 
+++	cc_write(sv->sv_cheri_cc_sealing_base);
++ #endif
++ 
++ }
++diff --git a/sys/riscv/riscv/exception.S b/sys/riscv/riscv/exception.S
++index b1384f1417..ddfc3303f9 100644
++--- a/sys/riscv/riscv/exception.S
+++++ b/sys/riscv/riscv/exception.S
++@@ -118,10 +118,6 @@
++ 	csc	ca6, (TF_A + 6 * 16)(csp)
++ 	csc	ca7, (TF_A + 7 * 16)(csp)
++ 
++-.if \mode == 0	/* We came from userspace. */
++-	
++-.endif
++-
++ .if \mode == 1
++ 	/* Store kernel sp */
++ 	li	t1, TF_SIZE
++@@ -210,6 +206,11 @@
++ 	csd	t0, (TF_STVAL)(csp)
++ 	csrr	t0, scause
++ 	csd	t0, (TF_SCAUSE)(csp)
+++.if \mode == 0
+++	/*Store colored cap register */
+++	//csrr t0, ccp
+++	//csd t0, (TF_CCP)(csp)
+++.endif
++ #else
++ 	csrr	t0, sstatus
++ 	sd	t0, (TF_SSTATUS)(sp)
++@@ -317,6 +318,14 @@
++ 	clc	cgp, (TF_GP)(csp)
++ .endif
++ 
+++.if \mode == 0	/* We came from userspace. */
+++	/*Load colored cap register */
+++	//cld t0, (TF_CCP)(csp)
+++	//csrw ccp, t0
+++.endif
+++
+++
+++
++ 	clc	cra, (TF_RA)(csp)
++ 
++ 	clc	ct0, (TF_T + 0 * 16)(csp)
++diff --git a/sys/riscv/riscv/swtch.S b/sys/riscv/riscv/swtch.S
++index bee11a863e..8aaca1326e 100644
++--- a/sys/riscv/riscv/swtch.S
+++++ b/sys/riscv/riscv/swtch.S
++@@ -320,8 +320,8 @@ ENTRY(cpu_throw)
++ 	clc	csp, (PCB_SP)(c13)
++ 
++ 	/*Load colored cap register */
++-	cld s0, (PCB_CCP)(c13)
++-	csrw ccp, s0
+++	//cld s0, (PCB_CCP)(c13)
+++	//csrw ccp, s0
++ 
++ 
++ 	/* s[0-11] */
++@@ -428,8 +428,8 @@ ENTRY(cpu_switch)
++ 	csc	cs11, (PCB_S + 11 * 16)(c13)
++ 
++ 	/*Store colored cap register */
++-	csrr s0, ccp
++-	csd s0, (PCB_CCP)(c13)
+++	//csrr s0, ccp
+++	//csd s0, (PCB_CCP)(c13)
++ #else
++ 	/* Store ra, sp and the callee-saved registers */
++ 	sd	ra, (PCB_RA)(x13)
++@@ -574,8 +574,8 @@ ENTRY(cpu_switch)
++ 	clc	csp, (PCB_SP)(c13)
++ 
++ 	/*Load colored cap register */
++-	cld s0, (PCB_CCP)(c13)
++-	csrw ccp, s0
+++	//cld s0, (PCB_CCP)(c13)
+++	//csrw ccp, s0
++ 
++ 	/* s[0-11] */
++ 	clc	cs0, (PCB_S + 0 * 16)(c13)
++@@ -699,6 +699,7 @@ ENTRY(fork_trampoline)
++ 	csc	ct0, (TF_SIZE + KF_DDC)(csp)
++ #endif
++ 
+++
++ 	/*
++ 	 * Switch to user DDC.  After this point, all stack accesses
++ 	 * must use 'csp' instead of 'sp'.
++@@ -842,8 +843,8 @@ ENTRY(savectx)
++ 	csc	cs11, (PCB_S + 11 * 16)(ca0)
++ 
++ 	/*Store colored cap register */
++-	csrr s0, ccp
++-	csd s0, (PCB_CCP)(ca0)
+++	//csrr s0, ccp
+++	//csd s0, (PCB_CCP)(ca0)
++ #elif __has_feature(capabilities)
++ 	/* Store ra, sp and the callee-saved registers */
++ 	sc	cra, (PCB_RA)(a0)
++@@ -866,8 +867,8 @@ ENTRY(savectx)
++ 	sc	cs11, (PCB_S + 11 * 16)(a0)
++ 
++ 	/*Store colored cap register */
++-	csrr s0, ccp
++-	sd s0, (PCB_CCP)(a0)
+++	//csrr s0, ccp
+++	//sd s0, (PCB_CCP)(a0)
++ #else
++ 	/* Store ra, sp and the callee-saved registers */
++ 	sd	ra, (PCB_RA)(a0)
++diff --git a/sys/sys/sysent.h b/sys/sys/sysent.h
++index 63be29543f..f4444ba21a 100644
++--- a/sys/sys/sysent.h
+++++ b/sys/sys/sysent.h
++@@ -125,6 +125,8 @@ struct sysentvec {
++ 	vm_offset_t	sv_cheri_revoke_shadow_base;
++ 	vm_offset_t	sv_cheri_revoke_shadow_offset;
++ 	vm_offset_t	sv_cheri_revoke_shadow_length;
+++	vm_offset_t	sv_cheri_cc_sealing_base;
+++
++ 	vm_offset_t	sv_cheri_revoke_info_page;
++ #endif
++ 	size_t		sv_psstringssz;	/* PS_STRINGS size */
++diff --git a/sys/vm/cc_revoke.c b/sys/vm/cc_revoke.c
++index 2e21a5fe45..82d29ca517 100644
++--- a/sys/vm/cc_revoke.c
+++++ b/sys/vm/cc_revoke.c
++@@ -1,10 +1,70 @@
++ #include <sys/sysent.h>
++ #include <vm/cc_revoke.h>
+++#include <vm/vm.h>
+++#include <vm/vm_param.h>
+++#include <vm/pmap.h>
+++#include <vm/swap_pager.h>
+++#include <vm/vm_map.h>
+++#include <vm/vm_object.h>
+++#include <vm/vm_extern.h>
+++#include <vm/vm_page.h>
++ 
++-void cc_alloc_sealing_bitmap(struct sysentvec *sv){
++-    sv->sv_cheri_cc_sealing_base = malloc(sv->sv_cheri_cc_sealing_length, M_CHERI_CC, M_WAITOK|M_ZERO);
++-}
++ 
++-void cc_dealloc_sealing_bitmap(struct sysentvec *sv){
++-    free(sv->sv_cheri_cc_sealing_base, M_CHERI_CC);
+++int vm_map_install_cc_sealing_bitmap(struct vm_map *map, struct sysentvec *sv)
+++{
+++	int cow = MAP_CREATE_SHADOW;
+++	int error = KERN_SUCCESS;
+++	bool reserved_sealing_bitmap = false;
+++	vm_object_t vmo_sealing;
+++	vm_pointer_t start;
+++
+++	vm_offset_t start_addr = sv->sv_cheri_cc_sealing_base;
+++	vm_offset_t end_addr = start_addr + SEALING_BITMAP_SIZE;
+++
+++	vmo_sealing = vm_object_allocate(OBJT_SWAP, end_addr - start_addr);
+++
+++	vm_object_set_flag(vmo_sealing, OBJ_NOCAP);
+++
+++	vm_map_lock(map);
+++
+++	start = start_addr; /* upcast to NULL-derived cap */
+++
+++	error = vm_map_reservation_create_locked(map, &start,
+++	    end_addr - start_addr, VM_PROT_READ | VM_PROT_WRITE);
+++
+++	KASSERT((ptraddr_t)start == start_addr,
+++	    ("vm_map_reservation_create_locked moved revocation's cheese"));
+++
+++	if (error != KERN_SUCCESS)
+++		goto out;
+++
+++	reserved_sealing_bitmap = true;
+++
+++	error = vm_map_insert(map, vmo_sealing, 0, start, end_addr,
+++	    VM_PROT_READ | VM_PROT_WRITE, VM_PROT_READ | VM_PROT_WRITE,
+++	    cow, start_addr);
+++
+++	if (error != KERN_SUCCESS)
+++		goto out;
+++        
+++out:
+++	if (error != KERN_SUCCESS) {
+++        printf("failed 1\n");
+++		int error2 __diagused;
+++		if (reserved_sealing_bitmap) {
+++			error2 = vm_map_reservation_delete_locked(map,
+++			    sv->sv_cheri_cc_sealing_base);
+++			KASSERT(error2 == KERN_SUCCESS,
+++			    ("vm_map_install_cheri_revoke_saling can't undo"));
+++		}
+++	}
+++
+++	vm_map_unlock(map);
+++
+++	if (error != KERN_SUCCESS) {
+++        printf("failed 2\n");
+++		vm_object_deallocate(vmo_sealing);
+++	} 
+++
+++	return (error);
++ }
++\ No newline at end of file
++diff --git a/sys/vm/cc_revoke.h b/sys/vm/cc_revoke.h
++index e23d528cec..7db1386afd 100644
++--- a/sys/vm/cc_revoke.h
+++++ b/sys/vm/cc_revoke.h
++@@ -6,13 +6,15 @@
++ #endif
++ #include <sys/malloc.h>
++ 
++-
++-
+++inline void cc_write(u_long val){
+++	__asm __volatile("csrw ccp, %0" :: "r" (val));
+++}
+++struct vm_map;
++ static const size_t SEALING_BITMAP_SIZE = ((1 << (CHERI_OTYPE_BITS-1)) / 8);
++ 
+++int vm_map_install_cc_sealing_bitmap(struct vm_map *map, struct sysentvec *sv);
+++
++ void cc_dealloc_sealing_bitmap(struct proc* p);
++ void cc_alloc_sealing_bitmap(struct proc* p);
++-void cc_write(u_long val);
++-u_long cc_read(void);
++ 
++ #endif
++\ No newline at end of file
++diff --git a/sys/vm/vm_cheri_revoke.c b/sys/vm/vm_cheri_revoke.c
++index e173f9bbc0..6eb27e2148 100644
++--- a/sys/vm/vm_cheri_revoke.c
+++++ b/sys/vm/vm_cheri_revoke.c
++@@ -66,29 +66,6 @@
++ #include <vm/vm_cheri_revoke.h>
++ #include <vm/cc_revoke.h>
++ 
++-u_long cc_read(void){
++-	u_long val;
++-	__asm __volatile("csrr %0, ccp" : "=r" (val));
++-	return val;
++-}
++-
++-void cc_write(u_long val){
++-	__asm __volatile("csrw ccp, %0" :: "r" (val));
++-}
++-
++-void cc_alloc_sealing_bitmap(struct proc* p){
++-    p->cheri_cc_sealing_base = malloc(SEALING_BITMAP_SIZE, M_DEVBUF, M_WAITOK|M_ZERO);
++-	u_long cc_bitmap = (u_long)p->cheri_cc_sealing_base;
++-	printf("cc_sealing: %lx!\n", cc_bitmap);
++-	//printf("ccp:%lx\n", cc_read());
++-	//cc_write(cc_bitmap);
++-	//printf("ccp:%lx\n", cc_read());
++-}
++-
++-void cc_dealloc_sealing_bitmap(struct proc* p){
++-    free(p->cheri_cc_sealing_base, M_DEVBUF);
++-}
++-
++ static void vm_cheri_revoke_pass_pre(vm_map_t);
++ static void vm_cheri_revoke_pass_post(vm_map_t);
++ static int vm_cheri_revoke_pass_locked(struct vmspace *,
++diff --git a/tests_programs/context_switching b/tests_programs/context_switching
++new file mode 100755
++index 0000000000..698f1444ed
++Binary files /dev/null and b/tests_programs/context_switching differ
++diff --git a/tests_programs/context_switching.c b/tests_programs/context_switching.c
++new file mode 100644
++index 0000000000..b88b481b35
++--- /dev/null
+++++ b/tests_programs/context_switching.c
++@@ -0,0 +1,19 @@
+++#include <stdio.h>
+++#include <stdlib.h>
+++#include <unistd.h>
+++
+++long cc_read(void){
+++	long val;
+++	__asm __volatile("csrr %0, ccp" : "=r" (val));
+++	return val;
+++}
+++
+++void cc_write(long val){
+++	__asm __volatile("csrw ccp, %0" :: "r" (val));
+++}
+++
+++int main(){
+++    cc_write(5);
+++    //fork();
+++	printf("hello world: %d\n", cc_read());
+++}
++\ No newline at end of file
++diff --git a/tests_programs/test_bitmap b/tests_programs/test_bitmap
++new file mode 100755
++index 0000000000..f20063e202
++Binary files /dev/null and b/tests_programs/test_bitmap differ
++diff --git a/tests_programs/test_bitmap.c b/tests_programs/test_bitmap.c
++new file mode 100644
++index 0000000000..0918dcb05a
++--- /dev/null
+++++ b/tests_programs/test_bitmap.c
++@@ -0,0 +1,45 @@
+++#include <stdio.h>
+++#include <stdlib.h>
+++#include <unistd.h>
+++#include <string.h>
+++#include <errno.h>
+++#include <cheri/revoke.h>
+++#include <assert.h>
+++
+++#define CHERI_CC_SEALING_BITMAP				0x08
+++static void *sealing_bitmap;
+++//static void *shadow_bitmap;
+++
+++void write_sealing_bitmap(char* sbitmap, int otype, int val){
+++    int byte = otype/8;
+++    int bit = otype%8;
+++    if(val==1){
+++        sbitmap[byte] = sbitmap[byte]|((1<<bit));
+++    }else{
+++        sbitmap[byte] = sbitmap[byte]&(~(1<<bit));
+++    }
+++}
+++
+++int main(){
+++    /*
+++    cheri_revoke_get_shadow(CHERI_REVOKE_SHADOW_NOVMEM_ENTIRE, NULL, &shadow_bitmap);
+++    *((int*)shadow_bitmap) = 4095;
+++    */
+++
+++    assert(cheri_revoke_get_shadow(CHERI_CC_SEALING_BITMAP, NULL, &sealing_bitmap)==0);
+++    printf("sealingbitmap: %p\n", sealing_bitmap);
+++
+++    int* p = (int*) malloc2(8*sizeof(int*));
+++    printf("ccgettype: %llx\n", __builtin_cheri_type_get(p));
+++    /*
+++    for(int i = 0;i<8;i++){
+++        p[i] = (int*)malloc(64);
+++        printf("ccgettype: %llx\n", __builtin_cheri_type_get(p[i]));
+++    }
+++
+++    for(int i = 0;i<8;i++){
+++        free(p[i]);
+++        printf("%d\n", *((int*)sealing_bitmap));
+++    }
+++        */
+++}
++\ No newline at end of file
+diff --git a/tests_programs/ccc b/tests_programs/ccc
+new file mode 100755
+index 000000000000..3053ac448769
+--- /dev/null
++++ b/tests_programs/ccc
+@@ -0,0 +1,177 @@
++#!/bin/sh
++#
++# ccc - Cross compilation script
++set -e
++set -u
++
++name=$(basename "$0")
++
++VERBOSE=${VERBOSE:-0}
++QUIET=${QUIET:-0}
++
++usage()
++{
++    cat <<EOF
++$name <arch> [...]
++
++Supported architectures:
++    aarch64         - conventional AArch64
++    morello-hybrid  - AArch64 Morello supporting CHERI
++    morello-purecap - AArch64 Morello pure-capability
++    riscv64         - conventional RISC-V 64-bit
++    riscv64-hybrid  - RISC-V 64-bit supporting CHERI
++    riscv64-purecap - RISC-V 64-bit pure-capability
++EOF
++    exit 1
++}
++
++err()
++{
++    ret=$1
++    shift
++    echo >&2 "$@"
++    exit "$ret"
++}
++
++warn()
++{
++    echo >&2 "$@"
++}
++
++debug()
++{
++    if [ "$VERBOSE" -ne 0 ]; then
++        echo >&2 "$@"
++    fi
++}
++
++info()
++{
++    if [ "$QUIET" -eq 0 ]; then
++        echo >&2 "$@"
++    fi
++}
++
++run()
++{
++    debug	# add space before normal multiline output
++    info "Running:" "$@"
++    "$@"
++}
++
++if [ $# -eq 0 ]; then
++    usage
++fi
++
++arch=$1
++shift
++
++cheri_arch_basename=${arch%%-*}
++cheri_sdk_name=sdk
++case $arch in
++aarch64)
++    cheri_arch_basename=morello
++    cheri_sdk_name=morello-sdk
++    arch_flags="-target aarch64-unknown-freebsd -march=morello+noa64c"
++    ;;
++morello-hybrid)
++    cheri_sdk_name=morello-sdk
++    arch_flags="-target aarch64-unknown-freebsd -march=morello -Xclang -morello-vararg=new"
++    ;;
++morello-purecap)
++    cheri_sdk_name=morello-sdk
++    arch_flags="-target aarch64-unknown-freebsd -march=morello -mabi=purecap -Xclang -morello-vararg=new"
++    ;;
++riscv64)
++    arch_flags="-target riscv64-unknown-freebsd -march=rv64gc -mabi=lp64d -mno-relax"
++    ;;
++riscv64-hybrid)
++    arch_flags="-target riscv64-unknown-freebsd -march=rv64gcxcheri -mabi=lp64d -mno-relax"
++    ;;
++riscv64-purecap)
++    arch_flags="-target riscv64-unknown-freebsd -march=rv64gcxcheri -mabi=l64pc128d -mno-relax"
++    ;;
++*)
++    err 1 "Unsupported architecture '$arch'"
++    ;;
++esac
++
++# Find our SDK, using the first of these that expands only defined variables:
++#  ${CHERIBUILD_SDK_${cheri_sdk_name}} (if that syntax worked)
++#  ${CHERIBUILD_SDK}
++#  ${CHERIBUILD_OUTPUT}/${cheri_sdk_name}
++#  ${CHERIBUILD_SOURCE}/output/${cheri_sdk_name}
++#  ~/cheri/output/${cheri_sdk_name}
++
++SDKDIR_SOURCE=${CHERIBUILD_SOURCE:-${HOME}/cheri}
++SDKDIR_OUTPUT=${CHERIBUILD_OUTPUT:-${SDKDIR_SOURCE}/output}
++SDKDIR_SDK=${CHERIBUILD_SDK:-${SDKDIR_OUTPUT}/${cheri_sdk_name}}
++SDKDIR=$(eval echo \${CHERIBUILD_SDK_"${cheri_arch_basename}":-})
++SDKDIR=${SDKDIR:-${SDKDIR_SDK}}
++
++enverr()
++{
++    echo >&2 $1
++    echo "Perhaps set or adjust one of the following environment variables:"
++    for v in SOURCE OUTPUT SDK; do
++        echo " " CHERIBUILD_$v \(currently: \
++          $(eval echo \${CHERIBUILD_$v:-unset, tried \$SDKDIR_$v})\)
++    done
++
++    A="CHERIBUILD_SDK_${cheri_arch_basename}"
++    echo " " "$A" \(currently: $(eval echo \${$A:-unset, tried \$SDKDIR})\)
++
++    echo " " "$2" \(currently: $(eval echo \${$2:-unset, tried \$SDK_$2})\)
++
++    err 1 "Please check your build environment"
++}
++
++SDK_CLANG=${CLANG:-${SDKDIR}/bin/clang}
++
++case $name in
++*clang|*cc)	prog="${SDK_CLANG}" ;;
++*clang++|*c++)	prog="${SDK_CLANG}++" ;;
++*)	err 1 "Unsupported program name '$name'" ;;
++esac
++if [ ! -x "$prog" ]; then
++    enverr "Target compiler '$prog' not found." "CLANG"
++fi
++debug "prog: $prog"
++
++SDK_SYSROOT=${SYSROOT:-${SDKDIR}/sysroot-${cheri_arch_basename}-purecap}
++if [ ! -d "$SDK_SYSROOT" ]; then
++    enverr "Sysroot '$SDK_SYSROOT' does not exist." "SYSROOT"
++fi
++debug "sysroot: $SDK_SYSROOT"
++
++debug "arch_flags: $arch_flags"
++
++debug_flags="-g"
++debug "debug_flags: $debug_flags"
++
++opt_flags="-O2"
++debug "opt_flags: $opt_flags"
++
++sysroot_flags="--sysroot='$SDK_SYSROOT'"
++debug "sysroot_flags: $sysroot_flags"
++
++linker_flags="-fuse-ld=lld"
++debug "linker_flags: $linker_flags"
++
++diag_flags="-Wall -Wcheri"
++debug "diag_flags: $diag_flags"
++
++all_flags="$arch_flags $sysroot_flags $debug_flags $opt_flags $linker_flags $diag_flags"
++
++all_flags_rev=
++# shellcheck disable=SC2086 # intentional
++eval 'for flag in '$all_flags'; do
++    all_flags_rev="'"'"'$flag'"'"'${all_flags_rev:+ $all_flags_rev}"
++done'
++
++# shellcheck disable=SC2086 # intentional
++eval 'for flag in '$all_flags_rev'; do
++    set -- "$flag" "$@"
++done'
++
++run "$prog" "$@"
+diff --git a/tests_programs/context_switching b/tests_programs/context_switching
+new file mode 100755
+index 000000000000..698f1444ed86
+Binary files /dev/null and b/tests_programs/context_switching differ
+diff --git a/tests_programs/context_switching.c b/tests_programs/context_switching.c
+new file mode 100644
+index 000000000000..b88b481b353b
+--- /dev/null
++++ b/tests_programs/context_switching.c
+@@ -0,0 +1,19 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++
++long cc_read(void){
++	long val;
++	__asm __volatile("csrr %0, ccp" : "=r" (val));
++	return val;
++}
++
++void cc_write(long val){
++	__asm __volatile("csrw ccp, %0" :: "r" (val));
++}
++
++int main(){
++    cc_write(5);
++    //fork();
++	printf("hello world: %d\n", cc_read());
++}
+\ No newline at end of file
+diff --git a/tests_programs/initialised b/tests_programs/initialised
+new file mode 100644
+index 000000000000..e69de29bb2d1
+diff --git a/tests_programs/mass_unr_revoke b/tests_programs/mass_unr_revoke
+new file mode 100755
+index 000000000000..935bf104a140
+Binary files /dev/null and b/tests_programs/mass_unr_revoke differ
+diff --git a/tests_programs/mass_unr_revoke.c b/tests_programs/mass_unr_revoke.c
+new file mode 100644
+index 000000000000..ce30fa97cac9
+--- /dev/null
++++ b/tests_programs/mass_unr_revoke.c
+@@ -0,0 +1,13 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++
++__attribute__((optnone))
++int main(){
++    for(int i=0;i<8100000;i++){
++        void* p = malloc(8);
++        if(rand()%1000<=998){
++            free(p);
++        }
++    }
++}
+diff --git a/tests_programs/microbench.c b/tests_programs/microbench.c
+new file mode 100644
+index 000000000000..0d673b5012cb
+--- /dev/null
++++ b/tests_programs/microbench.c
+@@ -0,0 +1,26 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++
++#define max_otpyes 2097152
++#define max_free_chance 10000
++
++__attribute__((optnone))
++void malloc_test(int alloc_size, int free_chance){
++    for(int i=0;i<max_otpyes*4;i++){
++        void* p = malloc(alloc_size);
++        if(rand()%max_free_chance<=free_chance){
++            free(p);
++        }
++    }
++}
++
++int main(int argc, char* argv[]){
++    if(argc < 3){
++        printf("please provide an alloc size and a free chance\n");
++        exit(-1);
++    }
++    int alloc_size = atoi(argv[1]);
++    int free_chance = atoi(argv[2]);
++    malloc_test(alloc_size, free_chance);
++}
+\ No newline at end of file
+diff --git a/tests_programs/otype_test.c b/tests_programs/otype_test.c
+new file mode 100644
+index 000000000000..062345a480b7
+--- /dev/null
++++ b/tests_programs/otype_test.c
+@@ -0,0 +1,29 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <string.h>
++#include <errno.h>
++#include <cheri/revoke.h>
++#include <assert.h>
++
++#define CHERI_CC_SEALING_BITMAP				0x08
++static void *sealing_bitmap;
++
++
++int main() {
++  char test[8];
++  long i = 0;
++  char * ptr = &test[0];
++  long otype = 0x40000; 
++  long total_otype = ((1 << 21) -5);
++  for (i; i < total_otype; i++) {
++      ptr = __builtin_cheri_cc_set_type(ptr, otype);
++      printf("otype: %llx\n", otype);
++      if (__builtin_cheri_type_get(ptr) != otype) { 
++        printf(" false : ccgettype: %llx\n", __builtin_cheri_type_get(ptr));
++        exit(-1);
++      }
++      printf("ccgettype: %llx\n", __builtin_cheri_type_get(ptr));
++      otype++; 
++  }
++}
+\ No newline at end of file
+diff --git a/tests_programs/test_bitma b/tests_programs/test_bitma
+new file mode 100755
+index 000000000000..5c722259e936
+Binary files /dev/null and b/tests_programs/test_bitma differ
+diff --git a/tests_programs/test_bitmap b/tests_programs/test_bitmap
+new file mode 100755
+index 000000000000..ba6b3f5caf0b
+Binary files /dev/null and b/tests_programs/test_bitmap differ
+diff --git a/tests_programs/test_bitmap.c b/tests_programs/test_bitmap.c
+new file mode 100644
+index 000000000000..85d933f68aea
+--- /dev/null
++++ b/tests_programs/test_bitmap.c
+@@ -0,0 +1,54 @@
++#include <stdio.h>
++#include <stdlib.h>
++#include <unistd.h>
++#include <string.h>
++#include <errno.h>
++#include <cheri/revoke.h>
++#include <assert.h>
++
++#define CHERI_CC_SEALING_BITMAP				0x08
++static void *sealing_bitmap;
++//static void *shadow_bitmap;
++    /*
++    cheri_revoke_get_shadow(CHERI_REVOKE_SHADOW_NOVMEM_ENTIRE, NULL, &shadow_bitmap);
++    *((int*)shadow_bitmap) = 4095;
++    */
++
++    //assert(cheri_revoke_get_shadow(CHERI_CC_SEALING_BITMAP, NULL, &sealing_bitmap)==0);
++    //printf("sealingbitmap: %p\n", sealing_bitmap);
++
++void write_sealing_bitmap(char* sbitmap, int otype, int val){
++    int byte = otype/8;
++    int bit = otype%8;
++    if(val==1){
++        sbitmap[byte] = sbitmap[byte]|((1<<bit));
++    }else{
++        sbitmap[byte] = sbitmap[byte]&(~(1<<bit));
++    }
++}
++
++
++void use_after_free(int* p){
++    printf("ccgettype: %llx\n", __builtin_cheri_type_get(p));
++    printf("setting value of p\n");
++    *p = 5;
++    printf("value p:%d\n", *p);
++    printf("freeing p\n");
++    free(p);
++    printf("setting value of p\n");
++    *p = 7;
++    printf("value p:%d\n", *p);
++}
++
++int main(){
++    int* p1 = (int*) malloc(sizeof(int*));
++    printf("value p:%d\n", *p1);
++    free(p1);
++    printf("Normal malloc:\n");
++    malloc_revoke_quarantine_force_flush();
++    int* p2 = (int*) malloc(sizeof(int*));
++    printf("value p:%d\n", *p2);
++    free(p2);
++    use_after_free(p1);
++    use_after_free(p2);
++}
+\ No newline at end of file
