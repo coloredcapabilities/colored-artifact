@@ -1,0 +1,47 @@
+\begin{table}[htbp]
+\centering
+\caption{SQLite Speedtest1 Benchmark Results}
+\label{tab:sqlite-benchmark}
+\begin{tabular}{@{}llrrrrr@{}}
+\toprule
+ID & Benchmark & \multicolumn{2}{c}{Colored} & \multicolumn{2}{c}{Cornucopia} \\
+\cmidrule(lr){3-4} \cmidrule(lr){5-6}
+ & & Time (s) & Overhead & Time (s) & Overhead \\
+\midrule
+100 & 50000 INSERTs into table with no index & 53.48 & 1.09$\times$ & 49.06 & 1.00$\times$ \\
+110 & 50000 ordered INSERTS with one index/PK & 91.37 & 1.10$\times$ & 92.61 & 1.11$\times$ \\
+120 & 50000 unordered INSERTS with one index/PK & 103.55 & 1.09$\times$ & 112.15 & 1.18$\times$ \\
+130 & 25 SELECTS, numeric BETWEEN, unindexed & 104.66 & 1.10$\times$ & 96.00 & 1.01$\times$ \\
+140 & 10 SELECTS, LIKE, unindexed & 125.58 & 1.04$\times$ & 129.20 & 1.06$\times$ \\
+142 & 10 SELECTS w/ORDER BY, unindexed & 207.27 & 1.09$\times$ & 198.22 & 1.04$\times$ \\
+145 & 10 SELECTS w/ORDER BY and LIMIT, unindexed & 165.48 & 1.09$\times$ & 151.94 & 1.00$\times$ \\
+150 & CREATE INDEX five times & 143.72 & 1.12$\times$ & 163.38 & 1.27$\times$ \\
+160 & 10000 SELECTS, numeric BETWEEN, indexed & 88.59 & 1.03$\times$ & 87.46 & 1.02$\times$ \\
+161 & 10000 SELECTS, numeric BETWEEN, PK & 89.71 & 1.03$\times$ & 89.23 & 1.03$\times$ \\
+170 & 10000 SELECTS, text BETWEEN, indexed & 175.43 & 1.04$\times$ & 167.54 & 0.99$\times$ \\
+180 & 50000 INSERTS with three indexes & 156.29 & 1.08$\times$ & 200.89 & 1.39$\times$ \\
+190 & DELETE and REFILL one table & 158.07 & 1.07$\times$ & 207.29 & 1.41$\times$ \\
+200 & VACUUM & 120.56 & 1.07$\times$ & 182.75 & 1.62$\times$ \\
+210 & ALTER TABLE ADD COLUMN, and query & 4.67 & 1.09$\times$ & 4.33 & 1.01$\times$ \\
+230 & 10000 UPDATES, numeric BETWEEN, indexed & 86.99 & 1.10$\times$ & 80.19 & 1.02$\times$ \\
+240 & 50000 UPDATES of individual rows & 120.51 & 1.07$\times$ & 111.52 & 0.99$\times$ \\
+250 & One big UPDATE of the whole 50000-row table & 20.43 & 1.07$\times$ & 19.02 & 1.00$\times$ \\
+260 & Query added column after filling & 5.02 & 1.09$\times$ & 4.57 & 0.99$\times$ \\
+270 & 10000 DELETEs, numeric BETWEEN, indexed & 188.16 & 1.07$\times$ & 180.69 & 1.02$\times$ \\
+280 & 50000 DELETEs of individual rows & 136.09 & 1.06$\times$ & 128.31 & 1.00$\times$ \\
+290 & Refill two 50000-row tables using REPLACE & 338.96 & 1.08$\times$ & 399.53 & 1.27$\times$ \\
+300 & Refill a 50000-row table using (b\&1)==(a\&1) & 159.50 & 1.07$\times$ & 219.51 & 1.48$\times$ \\
+310 & 10000 four-ways joins & 347.18 & 1.07$\times$ & 319.78 & 0.99$\times$ \\
+320 & subquery in result set & 707.26 & 1.08$\times$ & 649.39 & 1.00$\times$ \\
+400 & 70000 REPLACE ops on an IPK & 110.89 & 1.08$\times$ & 126.69 & 1.23$\times$ \\
+410 & 70000 SELECTS on an IPK & 78.81 & 1.11$\times$ & 71.51 & 1.00$\times$ \\
+500 & 70000 REPLACE on TEXT PK & 119.23 & 1.09$\times$ & 130.57 & 1.19$\times$ \\
+510 & 70000 SELECTS on a TEXT PK & 119.61 & 1.11$\times$ & 107.79 & 1.00$\times$ \\
+520 & 70000 SELECT DISTINCT & 65.48 & 1.06$\times$ & 97.70 & 1.59$\times$ \\
+980 & PRAGMA integrity\_check & 321.43 & 1.10$\times$ & 289.91 & 0.99$\times$ \\
+990 & ANALYZE & 44.59 & 1.08$\times$ & 41.07 & 0.99$\times$ \\
+\midrule
+& \textbf{TOTAL} & 4758.56 & 1.08$\times$ & 4909.81 & 1.11$\times$ \\
+\bottomrule
+\end{tabular}
+\end{table}

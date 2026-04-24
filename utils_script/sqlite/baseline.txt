@@ -1,0 +1,87 @@
+time -l minimal_count_stats ./speedtest1 
+-- Speedtest1 for SQLite 3.22.0 2020-06-25 14:32:53 8ea3f6477e70eb9136629248abd86d
+ 100 - 50000 INSERTs into table with no index......................   49.047s
+ 110 - 50000 ordered INSERTS with one index/PK.....................   83.376s
+ 120 - 50000 unordered INSERTS with one index/PK...................   95.157s
+ 130 - 25 SELECTS, numeric BETWEEN, unindexed......................   95.018s
+ 140 - 10 SELECTS, LIKE, unindexed.................................  121.334s
+ 142 - 10 SELECTS w/ORDER BY, unindexed............................  190.326s
+ 145 - 10 SELECTS w/ORDER BY and LIMIT, unindexed..................  151.926s
+ 150 - CREATE INDEX five times.....................................  128.829s
+ 160 - 10000 SELECTS, numeric BETWEEN, indexed.....................   86.131s
+ 161 - 10000 SELECTS, numeric BETWEEN, PK..........................   87.003s
+ 170 - 10000 SELECTS, text BETWEEN, indexed........................  168.398s
+ 180 - 50000 INSERTS with three indexes............................  144.734s
+ 190 - DELETE and REFILL one table.................................  147.112s
+ 200 - VACUUM......................................................  113.028s
+ 210 - ALTER TABLE ADD COLUMN, and query...........................    4.287s
+ 230 - 10000 UPDATES, numeric BETWEEN, indexed.....................   78.918s
+ 240 - 50000 UPDATES of individual rows............................  112.737s
+ 250 - One big UPDATE of the whole 50000-row table.................   19.115s
+ 260 - Query added column after filling............................    4.608s
+ 270 - 10000 DELETEs, numeric BETWEEN, indexed.....................  176.415s
+ 280 - 50000 DELETEs of individual rows............................  128.252s
+ 290 - Refill two 50000-row tables using REPLACE...................  313.847s
+ 300 - Refill a 50000-row table using (b&1)==(a&1).................  148.433s
+ 310 - 10000 four-ways joins.......................................  323.599s
+ 320 - subquery in result set......................................  652.201s
+ 400 - 70000 REPLACE ops on an IPK.................................  103.002s
+ 410 - 70000 SELECTS on an IPK.....................................   71.215s
+ 500 - 70000 REPLACE on TEXT PK....................................  109.536s
+ 510 - 70000 SELECTS on a TEXT PK..................................  108.036s
+ 520 - 70000 SELECT DISTINCT.......................................   61.561s
+ 980 - PRAGMA integrity_check......................................  291.665s
+ 990 - ANALYZE.....................................................   41.388s
+       TOTAL....................................................... 4410.234s
+===== speedtest1 -- default =====
+cycles:         110297124849
+instructions:   61758979977
+time:           1102873153
+
+redirect:       2277606687
+branch:         5608543153
+jal:            2993427410
+jalr:           1780459540
+trap:           3846412
+
+load_wait:      51997807967
+cap_load_tag_set: 16260529848
+cap_store_tag_set: 4409705364
+
+itlb_miss_wait: 125187383
+icache_load:    69047309698
+icache_load_miss: 853060333
+icache_load_miss_wait: 7912399705
+
+dtlb_access:    47805334073
+dtlb_miss:      279175449
+dtlb_miss_wait: 7834731619
+dcache_load:    26634611134
+dcache_load_miss: 408618672
+dcache_load_miss_wait: 5558985871
+dcache_store:   9662711039
+dcache_store_miss: 244020135
+
+llcache_load_miss: 258132501
+llcache_load_miss_wait: 23905229162
+
+tagcache_load:  403976579 
+tagcache_load_miss: 463060
+tagcache_store: 72964956
+tagcache_store_miss: 159678
+tagcache_evict: 300871
+     4413.35 real      3960.04 user       383.88 sys
+     14304  maximum resident set size
+       742  average shared memory size
+        41  average unshared data size
+       128  average unshared stack size
+      3136  page reclaims
+         1  page faults
+         0  swaps
+         1  block input operations
+         0  block output operations
+         0  messages sent
+         0  messages received
+         0  signals received
+     15899  voluntary context switches
+    172825  involuntary context switches
