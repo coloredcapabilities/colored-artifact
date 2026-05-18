@@ -187,10 +187,30 @@ cd $CHERIBUILD
 ./cheribuild.py grpc-riscv64-purecap
 ```
 
-To run the gRPC benchmark on the host machine:
+Launch QEMU with port forwarding for the gRPC worker ports:
+
+```sh
+cd $CHERIBUILD
+./cheribuild.py run-riscv64-purecap --run-riscv64-purecap/extra-tcp-forwarding "10000=10000 10001=10001"
+```
+
+By default, the gRPC binaries are installed inside QEMU at:
+
+```
+/usr/local/riscv64-purecap/bin
+```
+
+To run the gRPC benchmark on QEMU, run the following script on your host machine:
+
+```sh
+$ARTIFACT_DIR/utils_script/grpc/grpc-client-bytes-qemu.sh
+```
+
+To run the gRPC benchmark on FPGA, run the following script on your host machine:
 
 ```sh
 $ARTIFACT_DIR/utils_script/grpc/grpc-client-bytes.sh
 ```
+
 
 
