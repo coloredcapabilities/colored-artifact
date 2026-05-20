@@ -100,18 +100,18 @@ __driver_exec()
 echo "${0}: Running benchmark for byte sizes: ${BYTE_SIZES}..."
 
 for BYTES in ${BYTE_SIZES}; do
-    mkdir -p ${BYTES}bytes
+    mkdir -p ${SCRIPT_DIR}/${BYTES}bytes
 
     echo "=== Run ${BYTES} bytes scenario ==="
 
-    __start_qemu_server ${BYTES}bytes
+    __start_qemu_server ${SCRIPT_DIR}/${BYTES}bytes
 
     __client_exec
 
     __driver_exec \
         --scenarios_file ${SCRIPT_DIR}/benchmark_${BYTES}bytes.json \
-        --scenario_result_file ${BYTES}bytes/qps-result.json \
-        --json_file_out ${BYTES}bytes/qps-result.json.log
+        --scenario_result_file ${SCRIPT_DIR}/${BYTES}bytes/qps-result.json \
+        --json_file_out ${SCRIPT_DIR}/${BYTES}bytes/qps-result.json.log
 
     __driver_exec --quit
     wait ${CLIENT_PID}
@@ -119,7 +119,7 @@ for BYTES in ${BYTE_SIZES}; do
     __stop_qemu_server
 
     echo "=== Server output (allocation/revocation stats) ==="
-    cat ${BYTES}bytes/server.log
+    cat ${SCRIPT_DIR}/${BYTES}bytes/server.log
     echo "==================================================="
 
     echo "=== ${BYTES} bytes scenario complete ==="
