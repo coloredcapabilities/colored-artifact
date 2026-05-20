@@ -129,6 +129,16 @@ This produces:
 
 Build PostgreSQL:
 
+Clone the repo manually under `$HOME/cheri/`:
+
+```sh
+git clone https://github.com/CTSRD-CHERI/postgres.git
+cd postgres
+git apply patches/postgress.diff
+```
+
+Then build with cheribuild:
+
 ```sh
 cd $CHERIBUILD
 ./cheribuild.py postgres-riscv64-purecap -d

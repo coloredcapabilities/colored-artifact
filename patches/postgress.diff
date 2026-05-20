@@ -1,0 +1,106 @@
+diff --git a/src/backend/main/main.c b/src/backend/main/main.c
+index 1180b22f2..89f57ddef 100644
+--- a/src/backend/main/main.c
++++ b/src/backend/main/main.c
+@@ -386,14 +386,14 @@ static void
+ check_root(const char *progname)
+ {
+ #ifndef WIN32
+-	if (geteuid() == 0)
+-	{
+-		write_stderr("\"root\" execution of the PostgreSQL server is not permitted.\n"
+-					 "The server must be started under an unprivileged user ID to prevent\n"
+-		  "possible system security compromise.  See the documentation for\n"
+-				  "more information on how to properly start the server.\n");
+-		exit(1);
+-	}
++	//if (geteuid() == 0)
++	//{
++	//	write_stderr("\"root\" execution of the PostgreSQL server is not permitted.\n"
++	//				 "The server must be started under an unprivileged user ID to prevent\n"
++	//	  "possible system security compromise.  See the documentation for\n"
++	//			  "more information on how to properly start the server.\n");
++	//	exit(1);
++	//}
+ 
+ 	/*
+ 	 * Also make sure that real and effective uids are the same. Executing as
+@@ -403,12 +403,12 @@ check_root(const char *progname)
+ 	 * trying to actively fix this situation seems more trouble than it's
+ 	 * worth; we'll just expend the effort to check for it.)
+ 	 */
+-	if (getuid() != geteuid())
+-	{
+-		write_stderr("%s: real and effective user IDs must match\n",
+-					 progname);
+-		exit(1);
+-	}
++	//if (getuid() != geteuid())
++	//{
++	//	write_stderr("%s: real and effective user IDs must match\n",
++	//				 progname);
++	//	exit(1);
++	//}
+ #else							/* WIN32 */
+ 	if (pgwin32_is_admin())
+ 	{
+diff --git a/src/bin/initdb/initdb.c b/src/bin/initdb/initdb.c
+index 16ed84319..7189ffdc8 100644
+--- a/src/bin/initdb/initdb.c
++++ b/src/bin/initdb/initdb.c
+@@ -798,16 +798,16 @@ get_id(void)
+ 	const char *username;
+ 
+ #ifndef WIN32
+-	if (geteuid() == 0)			/* 0 is root's uid */
+-	{
+-		fprintf(stderr,
+-				_("%s: cannot be run as root\n"
+-				  "Please log in (using, e.g., \"su\") as the "
+-				  "(unprivileged) user that will\n"
+-				  "own the server process.\n"),
+-				progname);
+-		exit(1);
+-	}
++	// if (geteuid() == 0)			/* 0 is root's uid */
++	// {
++	// 	fprintf(stderr,
++	// 			_("%s: cannot be run as root\n"
++	// 			  "Please log in (using, e.g., \"su\") as the "
++	// 			  "(unprivileged) user that will\n"
++	// 			  "own the server process.\n"),
++	// 			progname);
++	// 	exit(1);
++	// }
+ #endif
+ 
+ 	username = get_user_name_or_exit(progname);
+diff --git a/src/bin/pg_ctl/pg_ctl.c b/src/bin/pg_ctl/pg_ctl.c
+index a9b9551cc..5e8b4c751 100644
+--- a/src/bin/pg_ctl/pg_ctl.c
++++ b/src/bin/pg_ctl/pg_ctl.c
+@@ -2174,15 +2174,15 @@ main(int argc, char **argv)
+ 	 * Disallow running as root, to forestall any possible security holes.
+ 	 */
+ #ifndef WIN32
+-	if (geteuid() == 0)
+-	{
+-		write_stderr(_("%s: cannot be run as root\n"
+-					   "Please log in (using, e.g., \"su\") as the "
+-					   "(unprivileged) user that will\n"
+-					   "own the server process.\n"),
+-					 progname);
+-		exit(1);
+-	}
++	// if (geteuid() == 0)
++	// {
++	// 	write_stderr(_("%s: cannot be run as root\n"
++	// 				   "Please log in (using, e.g., \"su\") as the "
++	// 				   "(unprivileged) user that will\n"
++	// 				   "own the server process.\n"),
++	// 				 progname);
++	// 	exit(1);
++	// }
+ #endif
+ 
+ 	env_wait = getenv("PGCTLTIMEOUT");
