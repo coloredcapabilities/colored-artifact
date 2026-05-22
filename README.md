@@ -30,6 +30,8 @@ export ARTIFACT_DIR=~/cheri/Colored_Usenix
 
 The security evaluation can be run on either QEMU or FPGA.
 
+### Juliet Test Suite (CWE-415/416)
+
 Install and run the Juliet test suite:
 
 ```sh
@@ -49,6 +51,28 @@ sh juliet-run.sh 416
 **Expected results:**
 - **Double Free (CWE-415):** The program gracefully exits with exit code -1 (255).
 - **Use-After-Free (CWE-416):** You should see an In-address Space exception signal 34, resulting in exit code 162.
+
+### Real-World CVE Validation
+
+We validate PICASSO against 11 real-world UAF/Double-Free CVEs from published benchmarks.
+See [`validation/README.md`](./validation/README.md) for full details.
+
+```sh
+cd $ARTIFACT_DIR/validation
+./build_all.sh
+./transfer.sh root@127.0.0.1 -p 10003
+```
+
+Then run the tests from the host:
+```sh
+cd $ARTIFACT_DIR/validation
+./run_all_remote.sh root@127.0.0.1 -p 10003
+```
+
+The validated CVEs include BZip2 (CVE-2016-3189), libiberty (CVE-2016-4487),
+nasm (CVE-2017-10686, CVE-2019-8343), libzip (CVE-2019-17582),
+NGINX njs (CVE-2020-24346), LibreDWG (CVE-2022-35164), Lua (CVE-2019-6706),
+mjs (issues 73, 78), and yasm (issue 91).
 
 ---
 

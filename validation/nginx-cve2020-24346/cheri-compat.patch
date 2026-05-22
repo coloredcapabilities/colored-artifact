@@ -1,0 +1,14 @@
+--- a/src/njs_types.h
++++ b/src/njs_types.h
+@@ -14,7 +14,11 @@
+
+ #if (__LP64__)
+ #define NJS_64BIT       1
++#if defined(__CHERI__)
++#define NJS_PTR_SIZE    16
++#else
+ #define NJS_PTR_SIZE    8
++#endif
+ #else
+ #define NJS_64BIT       0
+ #define NJS_PTR_SIZE    4

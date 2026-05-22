@@ -1,0 +1,14 @@
+--- a/libiberty/fibheap.c
++++ b/libiberty/fibheap.c
+@@ -1,3 +1,4 @@
++#include <limits.h>
+ /* A Fibonacci heap datatype.
+    Copyright 1998, 1999, 2000, 2001 Free Software Foundation, Inc.
+    Contributed by Daniel Berlin (dan@cgsoftware.com).
+--- a/libiberty/pex-unix.c
++++ b/libiberty/pex-unix.c
+@@ -1,3 +1,4 @@
++#include <fcntl.h>
+ /* Utilities to execute a program in a subprocess (possibly linked by pipes
+    with other subprocesses), and wait for it.  Generic Unix version
+    (also stratus VOS, but stratus VOS is not supported by autoconf)

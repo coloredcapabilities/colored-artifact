@@ -1,0 +1,25 @@
+name:
+    %rep 4³.bin
+
+;
+; t0 - 1
+ents=-Ox -fbin -obr3bss383.bin; Fi383.bin
+
+;
+; thi5117
+; hd=106208
+;
+%mêêêêêacro b_struc 1-*
+    %push foo
+        %strlen %$se %$strucname '1
+%%top_%$strucnaeÚ
+       %c
+
+ %0    %rep 83.bin
+
+resb %{Òstrucname}%1 - $  %%top_%$st)
+%1&
+        %endrep
+ ame)
+%1&
+        %endrep

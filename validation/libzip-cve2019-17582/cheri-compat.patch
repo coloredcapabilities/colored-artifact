@@ -1,0 +1,10 @@
+--- a/lib/zip_random_unix.c
++++ b/lib/zip_random_unix.c
+@@ -34,6 +34,7 @@
+ #include "zipint.h"
+
+ #include <fcntl.h>
++#include <unistd.h>
+
+ bool
+ zip_random(zip_uint8_t *buffer, zip_uint16_t length)
