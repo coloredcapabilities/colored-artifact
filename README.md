@@ -1,5 +1,53 @@
-# Colored Capabilities Artifact
+# PICASSO Artifact 
 
+While the CHERI instruction-set architecture extensions
+for capabilities enable strong spatial memory safety, CHERI
+lacks built-in temporal safety, particularly for heap alloca-
+tions. Prior attempts to augment CHERI with temporal safety
+fall short in terms of scalability, memory overhead, and in-
+complete security guarantees due to periodical sweeps of the
+system’s memory to individually revoke stale capabilities.
+We address these limitations by introducing colored capa-
+bilities that add a controlled form of indirection to CHERI’s
+capability model. This enables provenance tracking of capa-
+bilities to their respective allocations via a hardware-managed
+provenance-validity table, allowing bulk retraction of dan-
+gling pointers without needing to quarantine freed memory.
+Colored capabilities significantly reduce the frequency of
+capability revocation sweeps while improving security.
+We realize colored capabilities in PICASSO, an extension of
+the CHERI-RISC-V architecture on a speculative out-of-order
+FPGA softcore (CHERI-Toooba). We also integrate colored-
+capability support into the CheriBSD OS and CHERI-enabled
+Clang/LLVM toolchain. Our evaluation shows effective miti-
+gation of use-after-free and double-free bugs across all heap-
+based temporal memory-safety vulnerabilities in NIST Juliet
+test cases, real-world CVEs, only a small performance over-
+head on SPEC CPU benchmarks (≈ 5% g.m.), less latency,
+and more consistent performance in long-running SQLite,
+PostgreSQL, and gRPC workloads compared to prior work.
+
+
+More Information
+
+- PICASSO: Scaling CHERI Use-After-Free Protection to Millions of Allocations using Colored Capabilities 
+  https://arxiv.org/abs/2602.09131
+
+
+```bibtex
+@misc{Gulmez26, 
+  author = {Gülmez, Merve and Sturm, Ruben and ElAtali, Hossam and Englund, Håkan and 
+            Woodruff, Jonathan and Asokan, N. and Nyman, Thomas}, 
+  title = {PICASSO: Scaling CHERI Use-After-Free Protection to 
+           Millions of Allocations using Colored Capabilities}, 
+  year = {2026},
+  doi = {10.48550/ARXIV.2602.09131},
+  howpublished = {{\tt arXiv:2602.09131 [cs.CR]}},
+  url = {https://arxiv.org/abs/2602.0913}
+}
+```
+
+### Artifact
 Our artifact can be evaluated at three levels:
 
 | Evaluation Level | Hardware Required | What It Reproduces |
