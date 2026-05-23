@@ -1,5 +1,29 @@
+diff --git a/.gitmodules b/.gitmodules
+index 6799cf1..0abb409 100644
+--- a/.gitmodules
++++ b/.gitmodules
+@@ -9,7 +9,7 @@
+ 	url = https://github.com/CTSRD-CHERI/TagController.git
+ [submodule "libs/cheri-cap-lib"]
+ 	path = libs/cheri-cap-lib
+-	url = https://github.com/CTSRD-CHERI/cheri-cap-lib.git
++	url = git@gitlab.com:ssg-research/platsec/attack-tolerant-execution/coloredcap/chericaplib.git
+ [submodule "libs/RISCV_HPM_Events"]
+ 	path = libs/RISCV_HPM_Events
+ 	url = https://github.com/CTSRD-CHERI/RISCV_HPM_Events.git
+diff --git a/Tests/benchmarks b/Tests/benchmarks
+index 2d72202..bca1a53 160000
+--- a/Tests/benchmarks
++++ b/Tests/benchmarks
+@@ -1 +1 @@
+-Subproject commit 2d72202cd39a7813e26814647f871d611fd72ec3
++Subproject commit bca1a53c0ff9ee6ff5977b3cf72830f1f92a89d7-dirty
+diff --git a/Tests/isa/coremark.elf b/Tests/isa/coremark.elf
+new file mode 100644
+index 0000000..745b870
+Binary files /dev/null and b/Tests/isa/coremark.elf differ
 diff --git a/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/Makefile b/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/Makefile
-index 4f0dd568..15ea5014 100644
+index 4f0dd56..15ea501 100644
 --- a/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/Makefile
 +++ b/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/Makefile
 @@ -8,7 +8,8 @@ ARCH ?= RV64ACDFIMSUxCHERI
@@ -13,7 +37,7 @@ index 4f0dd568..15ea5014 100644
  #================================================================
  # Parameter settings for MIT RISCY, setup paths etc. for Include_Common
 diff --git a/builds/Resources/Include_Common.mk b/builds/Resources/Include_Common.mk
-index 9a6b8b3d..c9241a45 100644
+index 9a6b8b3..c9241a4 100644
 --- a/builds/Resources/Include_Common.mk
 +++ b/builds/Resources/Include_Common.mk
 @@ -73,7 +73,7 @@ EXAMPLE ?= PLEASE_DEFINE_EXAMPLE_PATH_TO_ELF
@@ -25,11 +49,31 @@ index 9a6b8b3d..c9241a45 100644
  
  # ================================================================
  # Test: run the executable on the standard RISCV ISA test specified in TEST
+diff --git a/libs/cheri-cap-lib b/libs/cheri-cap-lib
+index 27e63bd..4efb9c8 160000
+--- a/libs/cheri-cap-lib
++++ b/libs/cheri-cap-lib
+@@ -1 +1 @@
+-Subproject commit 27e63bd9fdd126997ba90034eee3f2136a027d27
++Subproject commit 4efb9c8879838d630acab646b20996e20dcaf8e0
 diff --git a/src_Core/CPU/Core.bsv b/src_Core/CPU/Core.bsv
-index ee844081..2854817c 100644
+index ee84408..3b56a23 100644
 --- a/src_Core/CPU/Core.bsv
 +++ b/src_Core/CPU/Core.bsv
-@@ -542,13 +542,14 @@ module mkCore#(CoreId coreId)(Core);
+@@ -16,7 +16,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -542,13 +546,14 @@ module mkCore#(CoreId coreId)(Core);
      end
      ReservationStationMem reservationStationMem = coreFix.memExeIfc.rsMemIfc;
      DTlbSynth dTlb = coreFix.memExeIfc.dTlbIfc;
@@ -45,7 +89,7 @@ index ee844081..2854817c 100644
  
      // flags to flush
      Reg#(Bool)  flush_tlbs <- mkReg(False);
-@@ -665,7 +666,7 @@ module mkCore#(CoreId coreId)(Core);
+@@ -665,7 +670,7 @@ module mkCore#(CoreId coreId)(Core);
          method lsqSetAtCommit = lsq.setAtCommit;
          method lookupPAddr = lsq.lookupPAddr;
          method pauseCommit = coreFix.pendingIncorrectSpec;
@@ -54,7 +98,7 @@ index ee844081..2854817c 100644
  
          method setFlushTlbs;
             action
-@@ -797,6 +798,7 @@ module mkCore#(CoreId coreId)(Core);
+@@ -797,6 +802,7 @@ module mkCore#(CoreId coreId)(Core);
              flush_tlbs <= False;
              iTlb.flush;
              dTlb.flush;
@@ -62,7 +106,7 @@ index ee844081..2854817c 100644
             // $display ("%0d: %m.rule prepareCachesAndTlbs: flushing iTlb and dTlb", cur_cycle);
          end
          if (update_vm_info) begin
-@@ -805,6 +807,7 @@ module mkCore#(CoreId coreId)(Core);
+@@ -805,6 +811,7 @@ module mkCore#(CoreId coreId)(Core);
              let vmD = csrf.vmD;
              iTlb.updateVMInfo(vmI);
              dTlb.updateVMInfo(vmD);
@@ -70,7 +114,7 @@ index ee844081..2854817c 100644
              l2Tlb.updateVMInfo(vmI, vmD);
             // $display ("%0d: %m.rule prepareCachesAndTlbs: updating VMInfo", cur_cycle);
          end
-@@ -886,7 +889,7 @@ module mkCore#(CoreId coreId)(Core);
+@@ -886,7 +893,7 @@ module mkCore#(CoreId coreId)(Core);
  
      rule readyToFetch(
          !flush_reservation && !flush_tlbs && !update_vm_info
@@ -79,7 +123,7 @@ index ee844081..2854817c 100644
  `ifdef SECURITY_OR_INCLUDE_GDB_CONTROL
          && !flush_caches && !flush_brpred
          && iMem.flush_done && dMem.flush_done
-@@ -967,6 +970,7 @@ module mkCore#(CoreId coreId)(Core);
+@@ -967,6 +974,7 @@ module mkCore#(CoreId coreId)(Core);
          dMem.perf.setStatus(stats);
          iTlb.perf.setStatus(stats);
          dTlb.perf.setStatus(stats);
@@ -87,7 +131,7 @@ index ee844081..2854817c 100644
          l2Tlb.perf.setStatus(stats);
          fetchStage.perf.setStatus(stats);
  
-@@ -995,6 +999,9 @@ module mkCore#(CoreId coreId)(Core);
+@@ -995,6 +1003,9 @@ module mkCore#(CoreId coreId)(Core);
              DTlb: begin
                  dTlb.perf.req(unpack(truncate(r.pType)));
              end
@@ -97,7 +141,7 @@ index ee844081..2854817c 100644
              L2Tlb: begin
                  l2Tlb.perf.req(unpack(truncate(r.pType)));
              end
-@@ -1124,6 +1131,14 @@ module mkCore#(CoreId coreId)(Core);
+@@ -1124,6 +1135,14 @@ module mkCore#(CoreId coreId)(Core);
                  data: r.data
              });
          end
@@ -112,7 +156,7 @@ index ee844081..2854817c 100644
          else if(l2Tlb.perf.respValid) begin
              let r <- l2Tlb.perf.resp;
              resp = Valid(ProcPerfResp {
-@@ -1458,10 +1473,12 @@ module mkCore#(CoreId coreId)(Core);
+@@ -1458,10 +1477,12 @@ module mkCore#(CoreId coreId)(Core);
        // The following TLB actions update to a consistent state.
        iTlb.flush;
        dTlb.flush;
@@ -126,10 +170,23 @@ index ee844081..2854817c 100644
  
        let startpc = csrf.dpc_read;
 diff --git a/src_Core/CPU/CsrFile.bsv b/src_Core/CPU/CsrFile.bsv
-index 34de083d..39948297 100644
+index 34de083..83da4ab 100644
 --- a/src_Core/CPU/CsrFile.bsv
 +++ b/src_Core/CPU/CsrFile.bsv
-@@ -632,6 +632,7 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -16,7 +16,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hakan Englund, Merve Gulmez
++//      Copyright (c) Ericsson AB 
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -632,6 +636,7 @@ module mkCsrFile #(Data hartid)(CsrFile);
      );
      // sscratch
      Reg#(Data) sscratch_csr <- mkCsrReg(0);
@@ -137,7 +194,7 @@ index 34de083d..39948297 100644
      // scause
      Reg#(Bit#(1)) scause_interrupt_reg <- mkCsrReg(0);
      Reg#(Cause) scause_code_reg <- mkCsrReg(0);
-@@ -642,6 +643,12 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -642,6 +647,12 @@ module mkCsrFile #(Data hartid)(CsrFile);
         return { scause_interrupt_val, 0, scause_code_val };
      endfunction
  
@@ -150,7 +207,7 @@ index 34de083d..39948297 100644
      // stval (sbadaddr in spike)
      Reg#(Data) stval_csr <- mkCsrReg(0);
      // Capability cause register
-@@ -869,6 +876,8 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -869,6 +880,8 @@ module mkCsrFile #(Data hartid)(CsrFile);
              csrAddrINSTRET:    instret_csr;
              csrAddrTERMINATE:  terminate_csr;
              csrAddrSTATS:      stats_csr;
@@ -159,7 +216,7 @@ index 34de083d..39948297 100644
              // Supervisor CSRs
              csrAddrSSTATUS:    sstatus_csr;
              csrAddrSIE:        sie_csr;
-@@ -881,6 +890,8 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -881,6 +894,8 @@ module mkCsrFile #(Data hartid)(CsrFile);
              csrAddrSIP:        sip_csr;
              csrAddrSATP:       satp_csr;
              csrAddrSCCSR:      sccsr_csr;
@@ -168,17 +225,17 @@ index 34de083d..39948297 100644
              // Machine CSRs
              csrAddrMSTATUS:    mstatus_csr;
              csrAddrMISA:       misa_csr;
-@@ -1019,7 +1030,8 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -1019,7 +1034,8 @@ module mkCsrFile #(Data hartid)(CsrFile);
              csrAddrSCOUNTEREN: { 61'b0, x[2:0]};
              csrAddrSCAUSE:     { x[63], 59'b0, x[3:0] };
              csrAddrSATP:       { x[63], 3'b0, asid,  x [43:0] };
 -
-+            // csrAddrSCCP:        { x[63], 3'b0, asid,  x [43:0] };    // No idea if this is correct
++            // csrAddrSCCP:        { x[63], 3'b0, asid,  x [43:0] };    //ehakeng: No idea if this is correct
 +            // csrAddrSCCPT:       { x[63], 3'b0, asid,  x [43:0] };
              // User level CSRs
              csrAddrFFLAGS:     { 59'b0, x [4:0] };
              csrAddrFRM:        { 61'b0, x [2:0] };
-@@ -1268,7 +1280,12 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -1268,7 +1284,12 @@ module mkCsrFile #(Data hartid)(CsrFile);
          prev_prv_vec[prvM] <= prvU;
          ie_vec[prvM] <= prev_ie_vec[prvM];
          prev_ie_vec[prvM] <= 1;
@@ -192,7 +249,7 @@ index 34de083d..39948297 100644
          Data mstatus_val = fn_mstatus_val(sxl_reg, uxl_reg,
                                            tsr_reg, tw_reg,  tvm_reg,
                                            mxr_reg, sum_reg, mprv_reg,
-@@ -1281,7 +1298,7 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -1281,7 +1302,7 @@ module mkCsrFile #(Data hartid)(CsrFile);
                                            /* ie_vec [prvM] */ prev_ie_vec[prvM],
                                            ie_vec [prvS],
                                            ie_vec [prvU]);
@@ -201,7 +258,7 @@ index 34de083d..39948297 100644
  `ifdef INCLUDE_TANDEM_VERIF
                              , prv:    prev_prv_vec[prvM],
                              status: mstatus_val
-@@ -1294,7 +1311,12 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -1294,7 +1315,12 @@ module mkCsrFile #(Data hartid)(CsrFile);
          prev_prv_vec[prvS] <= prvU;
          ie_vec[prvS] <= prev_ie_vec[prvS];
          prev_ie_vec[prvS] <= 1;
@@ -215,7 +272,7 @@ index 34de083d..39948297 100644
          // For Tandem Verification, we return the full underlying MSTATUS register
          Data mstatus_val = fn_mstatus_val(sxl_reg, uxl_reg,
                                            tsr_reg, tw_reg,  tvm_reg,
-@@ -1310,7 +1332,7 @@ module mkCsrFile #(Data hartid)(CsrFile);
+@@ -1310,7 +1336,7 @@ module mkCsrFile #(Data hartid)(CsrFile);
                                            ie_vec [prvM],
                                            /* ie_vec [prvS] */ prev_ie_vec[prvS],
                                            ie_vec [prvU]);
@@ -225,7 +282,7 @@ index 34de083d..39948297 100644
                              , prv:    prev_prv_vec[prvS],
                              status: mstatus_val
 diff --git a/src_Core/ISA/CHERIExceptions.bsvi b/src_Core/ISA/CHERIExceptions.bsvi
-index fa810c63..524ef199 100644
+index fa810c6..524ef19 100644
 --- a/src_Core/ISA/CHERIExceptions.bsvi
 +++ b/src_Core/ISA/CHERIExceptions.bsvi
 @@ -10,6 +10,7 @@
@@ -237,10 +294,22 @@ index fa810c63..524ef199 100644
  `CHERIException(GlobalViolation,          5'd16)
  `CHERIException(PermitXViolation,         5'd17)
 diff --git a/src_Core/ISA/ISA_Decls_CHERI.bsv b/src_Core/ISA/ISA_Decls_CHERI.bsv
-index 13db74d7..3db463d5 100755
+index 13db74d..496e452 100755
 --- a/src_Core/ISA/ISA_Decls_CHERI.bsv
 +++ b/src_Core/ISA/ISA_Decls_CHERI.bsv
-@@ -91,10 +91,10 @@ function SCR unpackSCR(Bit#(5) addr);
+@@ -8,6 +8,11 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+ 
++ * 
++ * Colored-Cap modifications: 
++ *      Author: Hakan Englund, Merve Gulmez
++ *      Copyright (c) Ericsson AB 
++ *
+  * This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+  *
+  * @BERI_LICENSE_HEADER_START@
+@@ -91,10 +96,10 @@ function SCR unpackSCR(Bit#(5) addr);
      endcase);
  endfunction
  
@@ -253,7 +322,7 @@ index 13db74d7..3db463d5 100755
          ret = setValidCap(ret, False);
      end
      return ret;
-@@ -138,6 +138,7 @@ Bit #(7) f7_cap_CIncOffset      = 7'h11;
+@@ -138,6 +143,7 @@ Bit #(7) f7_cap_CIncOffset      = 7'h11;
  Bit #(7) f7_cap_CToPtr          = 7'h12;
  Bit #(7) f7_cap_CFromPtr        = 7'h13;
  Bit #(7) f7_cap_CSub            = 7'h14;
@@ -262,10 +331,23 @@ index 13db74d7..3db463d5 100755
  Bit #(7) f7_cap_CSetHigh        = 7'h16;
  // 7'h17-7'h1c unused
 diff --git a/src_Core/ISA/ISA_Decls_Priv_S.bsv b/src_Core/ISA/ISA_Decls_Priv_S.bsv
-index 3dce8bc0..db181c74 100644
+index 3dce8bc..50354e0 100644
 --- a/src_Core/ISA/ISA_Decls_Priv_S.bsv
 +++ b/src_Core/ISA/ISA_Decls_Priv_S.bsv
-@@ -44,6 +44,10 @@ CSR_Addr   csr_addr_sepc       = 12'h141;    // Supervisor exception program cou
+@@ -13,6 +13,12 @@
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+ 
++//-
++// Colored-Cap modifications: 
++//      Author: Hakan Englund
++//      Copyright (c) Ericsson AB 
++//-
++
+ // ================================================================
+ // WARNING: this is an 'include' file, not a separate BSV package!
+ //
+@@ -44,6 +50,10 @@ CSR_Addr   csr_addr_sepc       = 12'h141;    // Supervisor exception program cou
  CSR_Addr   csr_addr_scause     = 12'h142;    // Supervisor trap cause
  CSR_Addr   csr_addr_stval      = 12'h143;    // Supervisor bad address or instruction
  CSR_Addr   csr_addr_sip        = 12'h144;    // Supervisor interrupt pending
@@ -277,10 +359,23 @@ index 3dce8bc0..db181c74 100644
  CSR_Addr   csr_addr_satp       = 12'h180;    // Supervisor address translation and protection
  
 diff --git a/src_Core/RISCY_OOO/coherence/src/CCTypes.bsv b/src_Core/RISCY_OOO/coherence/src/CCTypes.bsv
-index e822b64a..a22b9b9e 100644
+index e822b64..c387687 100644
 --- a/src_Core/RISCY_OOO/coherence/src/CCTypes.bsv
 +++ b/src_Core/RISCY_OOO/coherence/src/CCTypes.bsv
-@@ -194,6 +194,10 @@ typedef struct {
+@@ -14,7 +14,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -194,6 +198,10 @@ typedef struct {
      type lineT
  ) deriving(Bits, Eq, FShow);
  
@@ -291,7 +386,7 @@ index e822b64a..a22b9b9e 100644
  // processor req/resp
  typedef struct {
      idT id;
-@@ -205,6 +209,7 @@ typedef struct {
+@@ -205,6 +213,7 @@ typedef struct {
      MemTaggedData data; // valid when op == Sc/Amo
      AmoInst amoInst; // valid when op == Amo
      Bool loadTags; // valid when op == Ld
@@ -299,7 +394,7 @@ index e822b64a..a22b9b9e 100644
      Bit#(16) pcHash; // hash of instruction pc sending the request
  } ProcRq#(type idT) deriving(Bits, Eq, FShow);
  
-@@ -213,7 +218,7 @@ interface L1ProcReq#(type idT);
+@@ -213,7 +222,7 @@ interface L1ProcReq#(type idT);
  endinterface
  
  interface L1ProcResp#(type idT);
@@ -309,10 +404,23 @@ index e822b64a..a22b9b9e 100644
      method ActionValue#(Tuple2#(LineByteEn, Line)) respSt(idT id);
      method Action evict(LineAddr a); // called when cache line is evicted
 diff --git a/src_Core/RISCY_OOO/coherence/src/L1Bank.bsv b/src_Core/RISCY_OOO/coherence/src/L1Bank.bsv
-index c31bec1c..53e47cb0 100644
+index c31bec1..af22bb0 100644
 --- a/src_Core/RISCY_OOO/coherence/src/L1Bank.bsv
 +++ b/src_Core/RISCY_OOO/coherence/src/L1Bank.bsv
-@@ -378,6 +378,7 @@ endfunction
+@@ -15,7 +15,11 @@
+ //-
+ // Prefetcher modifications:
+ //     Copyright (c) 2023 Karlis Susters
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -378,6 +382,7 @@ endfunction
              data: ?,
              amoInst: ?,
              loadTags: ?,
@@ -320,7 +428,7 @@ index c31bec1c..53e47cb0 100644
              pcHash: ?
          };
          cRqIdxT n <- cRqMshr.cRqTransfer.getEmptyEntryInit(r);
-@@ -584,9 +585,9 @@ endfunction
+@@ -584,9 +589,9 @@ endfunction
              Ld: begin
                  if (!cRqIsPrefetch[n]) begin
                      if (req.loadTags) begin
@@ -333,10 +441,23 @@ index c31bec1c..53e47cb0 100644
                  end
              end
 diff --git a/src_Core/RISCY_OOO/coherence/src/SelfInvL1Bank.bsv b/src_Core/RISCY_OOO/coherence/src/SelfInvL1Bank.bsv
-index 8fc2a8bf..7d84d7ec 100644
+index 8fc2a8b..78cc2e5 100644
 --- a/src_Core/RISCY_OOO/coherence/src/SelfInvL1Bank.bsv
 +++ b/src_Core/RISCY_OOO/coherence/src/SelfInvL1Bank.bsv
-@@ -470,7 +470,7 @@ module mkSelfInvL1Bank#(
+@@ -13,7 +13,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -470,7 +474,7 @@ module mkSelfInvL1Bank#(
          LineMemDataOffset dataSel = getLineMemDataOffset(req.addr);
          case(req.op) matches
              Ld: begin
@@ -346,10 +467,23 @@ index 8fc2a8bf..7d84d7ec 100644
              Lr: begin
                  procResp.respLrScAmo(req.id, getTaggedDataAt(curLine, dataSel));
 diff --git a/src_Core/RISCY_OOO/procs/RV64G_OOO/AluExePipeline.bsv b/src_Core/RISCY_OOO/procs/RV64G_OOO/AluExePipeline.bsv
-index 80f7e30e..be9a1e84 100644
+index 80f7e30..1cb6dd0 100644
 --- a/src_Core/RISCY_OOO/procs/RV64G_OOO/AluExePipeline.bsv
 +++ b/src_Core/RISCY_OOO/procs/RV64G_OOO/AluExePipeline.bsv
-@@ -396,7 +396,9 @@ module mkAluExePipeline#(AluExeInput inIfc)(AluExePipeline);
+@@ -21,7 +21,11 @@
+ //     SIPP (Secure IoT Processor Platform with Remote Attestation)
+ //     project funded by EPSRC: EP/S030868/1
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hakan Englund
++//      Copyright (c) Ericsson AB 
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -396,7 +400,9 @@ module mkAluExePipeline#(AluExeInput inIfc)(AluExePipeline);
          let x = regToExe.data;
          if(verbose) $display("[doExeAlu] ", fshow(regToExe));
          // execution
@@ -361,7 +495,7 @@ index 80f7e30e..be9a1e84 100644
          Bool link = (case (x.dInst.iType)
                  J, CJAL, CJALR, Jr: isValid(x.dst);
 diff --git a/src_Core/RISCY_OOO/procs/RV64G_OOO/CommitStage.bsv b/src_Core/RISCY_OOO/procs/RV64G_OOO/CommitStage.bsv
-index 45e5d7aa..553e9eef 100644
+index 45e5d7a..553e9ee 100644
 --- a/src_Core/RISCY_OOO/procs/RV64G_OOO/CommitStage.bsv
 +++ b/src_Core/RISCY_OOO/procs/RV64G_OOO/CommitStage.bsv
 @@ -490,7 +490,7 @@ module mkCommitStage#(CommitInput inIfc)(CommitStage);
@@ -374,10 +508,28 @@ index 45e5d7aa..553e9eef 100644
              trap: x.trap,
              state: x.rob_inst_state,
 diff --git a/src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv b/src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
-index ee391f65..90b4a62a 100644
+index ee391f6..74461bf 100644
 --- a/src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
 +++ b/src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
-@@ -50,6 +50,7 @@ import ClientServer::*;
+@@ -21,7 +21,16 @@
+ //     SIPP (Secure IoT Processor Platform with Remote Attestation)
+ //     project funded by EPSRC: EP/S030868/1
+ //-
+-//
++//-
++// Colored-Cap Main Designer: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++// Colored-Cap (Compatibility with CHERI sealing + Atomic L&S enforcement + Bug Fixes)
++//      Author: Hakan Englund, Merve Gulmez
++//      Copyright (c) 2025 Ericsson AB 
++// Colored-Cap ObjID Buffer Implementation 
++//      Copyright (c) 2020 Jonathan Woodruff
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -50,6 +59,7 @@ import ClientServer::*;
  import Cntrs::*;
  import Fifos::*;
  import Ehr::*;
@@ -385,7 +537,7 @@ index ee391f65..90b4a62a 100644
  import Types::*;
  import ProcTypes::*;
  import MemoryTypes::*;
-@@ -124,6 +125,8 @@ typedef struct {
+@@ -124,6 +134,8 @@ typedef struct {
      // result
      ByteOrTagEn shiftedBE;
      CapPipe vaddr;         // virtual addr
@@ -394,7 +546,7 @@ index ee391f65..90b4a62a 100644
  `ifdef INCLUDE_TANDEM_VERIF
      // for those mem instrs that store data
      Data    store_data;
-@@ -177,11 +180,18 @@ module mkMemRegToExeFifo(MemRegToExeFifo);
+@@ -177,11 +189,18 @@ module mkMemRegToExeFifo(MemRegToExeFifo);
      return m;
  endmodule
  
@@ -415,7 +567,7 @@ index ee391f65..90b4a62a 100644
              addr: getAddr(x.vaddr),
              write: (case(x.mem_func)
                          St, Sc, Amo: True;
-@@ -189,7 +199,26 @@ module mkDTlbSynth(DTlbSynth);
+@@ -189,7 +208,26 @@ module mkDTlbSynth(DTlbSynth);
                      endcase),
              capStore: x.capStore,
              potentialCapLoad: x.allowCapLoad
@@ -443,7 +595,7 @@ index ee391f65..90b4a62a 100644
      endfunction
      let m <- mkDTlb(getTlbReq);
      return m;
-@@ -254,6 +283,7 @@ interface MemExePipeline;
+@@ -254,6 +292,7 @@ interface MemExePipeline;
      interface Vector#(TMul#(2, AluExeNum), RecvBypass) recvBypass;
      interface ReservationStationMem rsMemIfc;
      interface DTlbSynth dTlbIfc;
@@ -451,7 +603,7 @@ index ee391f65..90b4a62a 100644
      interface SplitLSQ lsqIfc;
      interface StoreBuffer stbIfc;
      interface DCoCache dMemIfc;
-@@ -271,7 +301,7 @@ interface MemExePipeline;
+@@ -271,7 +310,7 @@ interface MemExePipeline;
  endinterface
  
  module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
@@ -460,7 +612,7 @@ index ee391f65..90b4a62a 100644
  
      // we change cache request in case of single core, becaues our MSI protocol
      // is not good with single core
-@@ -324,8 +354,11 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -324,8 +363,11 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
      // wire to recv bypass
      Vector#(TMul#(2, AluExeNum), RWire#(Tuple2#(PhyRIndx, CapPipe))) bypassWire <- replicateM(mkRWire);
  
@@ -473,7 +625,7 @@ index ee391f65..90b4a62a 100644
  
      // store buffer only used in WEAK model
  `ifdef TSO_MM
-@@ -348,6 +381,8 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -348,6 +390,8 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
  `endif
      // fifo for req mem
      Fifo#(1, Tuple4#(LdQTag, Addr, Bool, Bit#(16))) reqLdQ <- mkBypassFifo;
@@ -482,7 +634,7 @@ index ee391f65..90b4a62a 100644
      Fifo#(1, ProcRq#(DProcReqId)) reqLrScAmoQ <- mkBypassFifo;
  `ifdef TSO_MM
      Fifo#(1, Tuple2#(Addr, Bit#(16))) reqStQ <- mkBypassFifo;
-@@ -357,35 +392,72 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -357,35 +401,72 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
      // fifo for load result
      Fifo#(2, Tuple2#(LdQTag, MemResp)) forwardQ <- mkCFFifo;
      Fifo#(2, Tuple2#(LdQTag, MemResp)) memRespLdQ <- mkCFFifo;
@@ -575,7 +727,7 @@ index ee391f65..90b4a62a 100644
          endmethod
          method Action respLrScAmo(DProcReqId id, MemTaggedData d);
              respLrScAmoQ.enq(d);
-@@ -615,44 +687,205 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -615,44 +696,205 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
              accessByteCount = fromInteger(valueOf(CacheUtils::CLineNumMemDataBytes));
          end
  
@@ -803,7 +955,7 @@ index ee391f65..90b4a62a 100644
  
          if(verbose) $display("%t : [doFinishMem] ", $time, fshow(dTlbResp));
          if(isValid(cause) && verbose) $display("  [doFinishMem - dTlb response] PAGEFAULT!");
-@@ -717,8 +950,10 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -717,8 +959,10 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
                  x.capException = Valid(CSR_XCapCause{cheri_exc_reg: check.authority_idx, cheri_exc_code: cheriExcLengthViolation});
          end
          if (x.capException matches tagged Valid .c) cause = Valid(CapException(c));
@@ -815,7 +967,7 @@ index ee391f65..90b4a62a 100644
          inIfc.rob_setExecuted_doFinishMem(x.tag, getAddr(x.vaddr),
  `ifdef INCLUDE_TANDEM_VERIF
                                            store_data, store_data_BE,
-@@ -756,8 +991,10 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -756,8 +1000,10 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
  `endif
          // update LSQ
          LSQUpdateAddrResult updRes <- lsq.updateAddr(
@@ -827,7 +979,7 @@ index ee391f65..90b4a62a 100644
  
          // issue non-MMIO Ld which has no exception and is not waiting for
          // wrong path resp
-@@ -775,9 +1012,21 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -775,9 +1021,21 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
                  tag: ldTag,
                  paddr: paddr,
                  shiftedBE: x.shiftedBE,
@@ -849,7 +1001,7 @@ index ee391f65..90b4a62a 100644
  
  `ifdef PERF_COUNT
          if(isValid(cause) && inIfc.doStats) begin
-@@ -811,7 +1060,7 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -811,7 +1069,7 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
          if (info.shiftedBE == DataMemAccess (unpack(~0))) events.evt_MEM_CAP_LOAD = 1;
  `endif
          // search LSQ
@@ -858,7 +1010,7 @@ index ee391f65..90b4a62a 100644
          if(verbose) begin
              $display("%t : [doIssueLd] fromIssueQ: ", $time, fshow(fromIssueQ), " ; ",
                       fshow(info), " ; ", fshow(sbRes), " ; ", fshow(issRes));
-@@ -819,6 +1068,10 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -819,6 +1077,10 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
          // summarize
          if(issRes matches tagged Forward .forward) begin
              forwardQ.enq(tuple2(info.tag, forward.data));
@@ -869,7 +1021,7 @@ index ee391f65..90b4a62a 100644
              // early wake up
              if(forward.dst matches tagged Valid .dst) begin
                  inIfc.setRegReadyAggr_forward(dst.indx);
-@@ -832,10 +1085,15 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -832,10 +1094,15 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
          end
          else if(issRes == ToCache) begin
              reqLdQ.enq(tuple4(zeroExtend(info.tag), info.paddr, info.shiftedBE == TagMemAccess, info.pcHash));
@@ -885,7 +1037,7 @@ index ee391f65..90b4a62a 100644
  `ifdef PERF_COUNT
              // perf: load stall
              if(inIfc.doStats) begin
-@@ -851,12 +1109,49 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -851,12 +1118,49 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
          else begin
              doAssert(False, "load is stalled");
          end
@@ -935,7 +1087,7 @@ index ee391f65..90b4a62a 100644
      rule doIssueLdFromIssueQ;
          // get issue entry from LSQ
          doIssueLd(lsq.getIssueLd, True);
-@@ -914,13 +1209,46 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -914,13 +1218,46 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
      endaction
      endfunction
  
@@ -983,7 +1135,7 @@ index ee391f65..90b4a62a 100644
      rule doRespLdForward;
          forwardQ.deq;
          let {t, d} = forwardQ.first;
-@@ -1007,8 +1335,13 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1007,8 +1344,13 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
              data: ?,
              amoInst: ?,
              loadTags: False,
@@ -997,7 +1149,7 @@ index ee391f65..90b4a62a 100644
          reqLrScAmoQ.enq(req);
          if(verbose) $display("[doDeqLdQ_Lr_issue] ", fshow(lsqDeqLd), "; ", fshow(req));
          // check
-@@ -1220,7 +1553,8 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1220,7 +1562,8 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
      // store has not been issued yet)
      rule doDeqStQ_St_Mem_issue(
          !isValid(lsqDeqSt.fault) &&
@@ -1007,7 +1159,7 @@ index ee391f65..90b4a62a 100644
      );
          // send to mem
          Addr addr = lsqDeqSt.paddr;
-@@ -1244,7 +1578,8 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1244,7 +1587,8 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
      rule doDeqStQ_St_Mem(
          !isValid(lsqDeqSt.fault) &&&
          lsqDeqSt.memFunc == St &&& !lsqDeqSt.isMMIO &&&
@@ -1017,7 +1169,7 @@ index ee391f65..90b4a62a 100644
      );
          lsq.deqSt;
          // send to SB
-@@ -1303,6 +1638,7 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1303,6 +1647,7 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
              }
  `endif
          );
@@ -1025,7 +1177,7 @@ index ee391f65..90b4a62a 100644
          if(verbose) $display("[doDeqStQ_Fence] ", fshow(lsqDeqSt));
  `ifdef PERF_COUNT
          if(inIfc.doStats) begin
-@@ -1353,8 +1689,10 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1353,8 +1698,10 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
                  rl: lsqDeqSt.rel
              },
              loadTags: False,
@@ -1036,7 +1188,7 @@ index ee391f65..90b4a62a 100644
          reqLrScAmoQ.enq(req);
          if(verbose) $display("[doDeqStQ_ScAmo_issue] ", fshow(lsqDeqSt), "; ", fshow(req));
  `ifdef PERF_COUNT
-@@ -1566,10 +1904,30 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1566,10 +1913,30 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
      endrule
  
      // send req to D$
@@ -1068,7 +1220,7 @@ index ee391f65..90b4a62a 100644
              addr: addr,
              toState: loadTags ? T : (multicore ? S : E), // in case of single core, just fetch to E
              op: Ld,
-@@ -1577,10 +1935,32 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1577,10 +1944,32 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
              data: ?,
              amoInst: ?,
              loadTags: loadTags,
@@ -1102,7 +1254,7 @@ index ee391f65..90b4a62a 100644
      rule sendStToMem;
  `ifdef TSO_MM
          let {addr, pcHash} <- toGet(reqStQ).get;
-@@ -1598,6 +1978,7 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1598,6 +1987,7 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
              data: ?,
              amoInst: ?,
              loadTags: False,
@@ -1110,7 +1262,7 @@ index ee391f65..90b4a62a 100644
              pcHash: pcHash
          });
      endrule
-@@ -1614,6 +1995,7 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1614,6 +2004,7 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
      interface recvBypass = map(getRecvBypassIfc, bypassWire);
      interface rsMemIfc = rsMem;
      interface dTlbIfc = dTlb;
@@ -1118,7 +1270,7 @@ index ee391f65..90b4a62a 100644
      interface lsqIfc = lsq;
      interface stbIfc = stb;
      interface dMemIfc = dMem;
-@@ -1621,7 +2003,9 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
+@@ -1621,7 +2012,9 @@ module mkMemExePipeline#(MemExeInput inIfc)(MemExePipeline);
          rsMem.specUpdate,
          dispToRegQ.specUpdate,
          regToExeQ.specUpdate,
@@ -1129,10 +1281,21 @@ index ee391f65..90b4a62a 100644
      ));
  
 diff --git a/src_Core/RISCY_OOO/procs/RV64G_OOO/RenameStage.bsv b/src_Core/RISCY_OOO/procs/RV64G_OOO/RenameStage.bsv
-index d935830a..c1f54a71 100644
+index d935830..093f355 100644
 --- a/src_Core/RISCY_OOO/procs/RV64G_OOO/RenameStage.bsv
 +++ b/src_Core/RISCY_OOO/procs/RV64G_OOO/RenameStage.bsv
-@@ -267,7 +267,8 @@ module mkRenameStage#(RenameInput inIfc)(RenameStage);
+@@ -22,7 +22,9 @@
+ //     SIPP (Secure IoT Processor Platform with Remote Attestation)
+ //     project funded by EPSRC: EP/S030868/1
+ //-
+-//
++// Colored-Cap modifications: 
++//      Author: Hakan Englund
++//      Copyright (c) Ericsson AB 
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -267,7 +269,8 @@ module mkRenameStage#(RenameInput inIfc)(RenameStage);
          Maybe#(Trap) trap = tagged Invalid;
          let csr_state = csrf.decodeInfo;
          let pending_interrupt = csrf.pending_interrupt;
@@ -1143,7 +1306,7 @@ index d935830a..c1f54a71 100644
          // If Fpu regs are accessed, trap if mstatus_fs is "Off" (2'b00)
          Bool fpr_access = (   fn_ArchReg_is_FpuReg (x.regs.src1)
 diff --git a/src_Core/RISCY_OOO/procs/lib/CSRs.bsvi b/src_Core/RISCY_OOO/procs/lib/CSRs.bsvi
-index fd793ea9..28d0cab7 100644
+index fd793ea..28d0cab 100644
 --- a/src_Core/RISCY_OOO/procs/lib/CSRs.bsvi
 +++ b/src_Core/RISCY_OOO/procs/lib/CSRs.bsvi
 @@ -8,6 +8,8 @@
@@ -1165,10 +1328,23 @@ index fd793ea9..28d0cab7 100644
  `CSR(SCCSR,      12'h9c0)
  // machine standard CSRs
 diff --git a/src_Core/RISCY_OOO/procs/lib/DTlb.bsv b/src_Core/RISCY_OOO/procs/lib/DTlb.bsv
-index e24c47cc..fa8f7f3c 100644
+index e24c47c..96cc531 100644
 --- a/src_Core/RISCY_OOO/procs/lib/DTlb.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/DTlb.bsv
-@@ -78,7 +78,7 @@ typedef struct {
+@@ -13,7 +13,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -78,7 +82,7 @@ typedef struct {
  } DTlbReq#(type instT) deriving(Bits, Eq, FShow);
  
  typedef struct {
@@ -1177,7 +1353,7 @@ index e24c47cc..fa8f7f3c 100644
      instT inst;
      SpecBits specBits;
  } DTlbResp#(type instT) deriving(Bits, Eq, FShow);
-@@ -142,9 +142,9 @@ typedef union tagged {
+@@ -142,9 +146,9 @@ typedef union tagged {
  } DTlbWait deriving(Bits, Eq, FShow);
  
  module mkDTlb#(
@@ -1189,7 +1365,7 @@ index e24c47cc..fa8f7f3c 100644
  
      // TLB array
      DTlbArray tlb <- mkDTlbArray;
-@@ -166,7 +166,7 @@ module mkDTlb#(
+@@ -166,7 +170,7 @@ module mkDTlb#(
      Vector#(DTlbReqNum, Reg#(DTlbWait)) pendWait <- replicateM(mkReg(None));
      Vector#(DTlbReqNum, Reg#(Bool)) pendPoisoned <- replicateM(mkRegU);
      Vector#(DTlbReqNum, Reg#(instT)) pendInst <- replicateM(mkRegU);
@@ -1198,7 +1374,7 @@ index e24c47cc..fa8f7f3c 100644
      Vector#(DTlbReqNum, Ehr#(2, SpecBits)) pendSpecBits <- replicateM(mkEhr(?));
  
      // ordering of methods/rules that access pend reqs
-@@ -256,7 +256,7 @@ module mkDTlb#(
+@@ -256,7 +260,7 @@ module mkDTlb#(
          // request parent TLB to flush
          flushRqToPQ.enq(?);
          waitFlushP <= True;
@@ -1207,7 +1383,7 @@ index e24c47cc..fa8f7f3c 100644
  `ifdef PERFORMANCE_MONITORING
          EventsL1D ev = unpack(0);
          ev.evt_TLB_FLUSH = 1;
-@@ -268,7 +268,7 @@ module mkDTlb#(
+@@ -268,7 +272,7 @@ module mkDTlb#(
          flushRsFromPQ.deq;
          needFlush <= False;
          waitFlushP <= False;
@@ -1216,7 +1392,7 @@ index e24c47cc..fa8f7f3c 100644
      endrule
  
      // get resp from parent TLB
-@@ -279,104 +279,111 @@ module mkDTlb#(
+@@ -279,104 +283,111 @@ module mkDTlb#(
          // the current req being served is either the initiating req or other
          // req pending on the same resp
          let idx = fromMaybe(pRs.id, respForOtherReq);
@@ -1310,7 +1486,7 @@ index e24c47cc..fa8f7f3c 100644
 -            pendResp[idx] <= tuple3(?, Valid (fault), False);
 -            if(verbose) $display("[DTLB] refill page fault: idx %d; ", idx, fshow(r));
 -        end
- 
+-
 -        // get parent resp, miss resolved, reset wait bit
 -        pendWait[idx] <= None;
 -
@@ -1321,7 +1497,7 @@ index e24c47cc..fa8f7f3c 100644
 -        else begin
 -            doAssert(pendWait[idx] == WaitParent, "entry must be waiting for resp");
 -        end
--
+ 
 -        // find another req waiting for this resp
 -        function Bool waitForResp(DTlbReqIdx i);
 -            // we can ignore pendValid here, because not-None pendWait implies
@@ -1412,7 +1588,7 @@ index e24c47cc..fa8f7f3c 100644
      endrule
  
      // init freeQ
-@@ -452,117 +459,130 @@ module mkDTlb#(
+@@ -452,117 +463,130 @@ module mkDTlb#(
          // pendWait and pendResp are set later in this method
  
          // try to translate
@@ -1640,10 +1816,23 @@ index e24c47cc..fa8f7f3c 100644
  
  `ifdef PERF_COUNT
 diff --git a/src_Core/RISCY_OOO/procs/lib/Decode.bsv b/src_Core/RISCY_OOO/procs/lib/Decode.bsv
-index 0fef1b86..f0626342 100644
+index 0fef1b8..e2eefe4 100644
 --- a/src_Core/RISCY_OOO/procs/lib/Decode.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/Decode.bsv
-@@ -1121,6 +1121,14 @@ function DecodeResult decode(Instruction inst, Bool cap_mode);
+@@ -15,7 +15,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hakan Englund, Merve Gulmez
++//      Copyright (c) Ericsson AB 
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -1121,6 +1125,14 @@ function DecodeResult decode(Instruction inst, Bool cap_mode);
                              regs.src2 = Valid(tagged Gpr rs2);
                              dInst.capFunc = CapModify (AndPerm);
                          end
@@ -1659,10 +1848,23 @@ index 0fef1b86..f0626342 100644
                              legalInst = True;
                              dInst.iType = Cap;
 diff --git a/src_Core/RISCY_OOO/procs/lib/Exec.bsv b/src_Core/RISCY_OOO/procs/lib/Exec.bsv
-index af716deb..f05a9bdd 100644
+index af716de..abf54d8 100644
 --- a/src_Core/RISCY_OOO/procs/lib/Exec.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/Exec.bsv
-@@ -47,28 +47,31 @@ import ISA_Decls_CHERI::*;
+@@ -15,7 +15,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hakan Englund, Merve Gulmez
++//      Copyright (c) Ericsson AB 
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -47,28 +51,31 @@ import ISA_Decls_CHERI::*;
  import CacheUtils::*; // For CLoadTags alignment
  
  (* noinline *)
@@ -1709,7 +1911,7 @@ index af716deb..f05a9bdd 100644
          result = e1(cheriExcPermitCCallViolation);
      else if (toCheck.src2_permit_ccall         && !getHardPerms(b).permitCCall)
          result = e2(cheriExcPermitCCallViolation);
-@@ -80,10 +83,10 @@ function Maybe#(CSR_XCapCause) capChecksExec(CapPipe a, CapPipe b, CapPipe ddc,
+@@ -80,10 +87,10 @@ function Maybe#(CSR_XCapCause) capChecksExec(CapPipe a, CapPipe b, CapPipe ddc,
  endfunction
  
  (* noinline *)
@@ -1723,7 +1925,7 @@ index af716deb..f05a9bdd 100644
                                                                               , cheri_exc_code: e});
      Maybe#(CSR_XCapCause) result = Invalid;
      match {.isLoad, .isStore} = case (mem_func)
-@@ -92,10 +95,10 @@ function Maybe#(CSR_XCapCause) capChecksMem(CapPipe auth, CapPipe data, CapCheck
+@@ -92,10 +99,10 @@ function Maybe#(CSR_XCapCause) capChecksMem(CapPipe auth, CapPipe data, CapCheck
          Amo:    tuple2(True, True);
      endcase;
      Bool storeValidCap = isStore && isValidCap(data) && byteOrTagEn == DataMemAccess(replicate(True));
@@ -1737,7 +1939,7 @@ index af716deb..f05a9bdd 100644
      else if (isLoad && !getHardPerms(auth).permitLoad)
          result = eAuth(cheriExcPermitRViolation);
      else if (isLoad && !getHardPerms(auth).permitLoadCap && byteOrTagEn == TagMemAccess)
-@@ -112,7 +115,7 @@ endfunction
+@@ -112,7 +119,7 @@ endfunction
  (* noinline *)
  function Maybe#(BoundsCheck) prepareBoundsCheck(CapPipe a, CapPipe b, CapPipe pcc,
                                                  CapPipe ddc, Data vaddr, Bit#(TAdd#(CacheUtils::LogCLineNumMemDataBytes,1)) size, // These two are only used in the memory pipe. May factor into two functions later.
@@ -1746,7 +1948,7 @@ index af716deb..f05a9bdd 100644
      BoundsCheck ret = ?;
      CapPipe authority = ?;
      case(toCheck.check_authority_src)
-@@ -135,11 +138,15 @@ function Maybe#(BoundsCheck) prepareBoundsCheck(CapPipe a, CapPipe b, CapPipe pc
+@@ -135,11 +142,15 @@ function Maybe#(BoundsCheck) prepareBoundsCheck(CapPipe a, CapPipe b, CapPipe pc
      endcase
      ret.authority_base = getBase(authority);
      ret.authority_top = getTop(authority);
@@ -1764,7 +1966,7 @@ index af716deb..f05a9bdd 100644
          Src2Addr: ret.check_low = getAddr(b);
          Vaddr:    ret.check_low = vaddr;
      endcase
-@@ -147,7 +154,7 @@ function Maybe#(BoundsCheck) prepareBoundsCheck(CapPipe a, CapPipe b, CapPipe pc
+@@ -147,7 +158,7 @@ function Maybe#(BoundsCheck) prepareBoundsCheck(CapPipe a, CapPipe b, CapPipe pc
      case(toCheck.check_high_src)
          Src1AddrPlus2: ret.check_high = {1'b0,getAddr(a)+2};
          Src1Top: ret.check_high = getTop(a);
@@ -1773,7 +1975,7 @@ index af716deb..f05a9bdd 100644
          Src2Addr: ret.check_high = {1'b0,getAddr(b)};
          ResultTop: ret.check_high = {1'b0,getAddr(a)} + {1'b0,getAddr(b)};
          VaddrPlusSize: ret.check_high = {1'b0,vaddr} + zeroExtend(size);
-@@ -199,7 +206,7 @@ function CapPipe setBoundsALU(CapPipe cap, Data len, SetBoundsFunc boundsOp);
+@@ -199,7 +210,7 @@ function CapPipe setBoundsALU(CapPipe cap, Data len, SetBoundsFunc boundsOp);
  endfunction
  
  (* noinline *)
@@ -1782,7 +1984,7 @@ index af716deb..f05a9bdd 100644
      function csrOp (oldAddr, val, f) =
          case (f)
              Write: val;
-@@ -209,38 +216,45 @@ function CapPipe specialRWALU(CapPipe cap, CapPipe oldCap, SpecialRWFunc scrType
+@@ -209,38 +220,45 @@ function CapPipe specialRWALU(CapPipe cap, CapPipe oldCap, SpecialRWFunc scrType
      let addr = getAddr(cap);
      let oldAddr = getAddr(oldCap);
      CapPipe res = (case (scrType) matches
@@ -1846,7 +2048,7 @@ index af716deb..f05a9bdd 100644
      CapPipe res = (case(func) matches
              tagged ModifyOffset .offsetOp :
                  modifyOffset(a_mut, getAddr(b), offsetOp == IncOffset).value;
-@@ -248,14 +262,30 @@ function CapPipe capModify(CapPipe a, CapPipe b, CapModifyFunc func);
+@@ -248,14 +266,30 @@ function CapPipe capModify(CapPipe a, CapPipe b, CapModifyFunc func);
                  setBoundsALU(a_mut, getAddr(b), boundsOp);
              tagged SpecialRW .scrType     :
                  case (scrType) matches
@@ -1885,7 +2087,7 @@ index af716deb..f05a9bdd 100644
              tagged SealEntry              :
                  setKind(a_mut, SENTRY);
              tagged Seal                   :
-@@ -268,14 +298,20 @@ function CapPipe capModify(CapPipe a, CapPipe b, CapModifyFunc func);
+@@ -268,14 +302,20 @@ function CapPipe capModify(CapPipe a, CapPipe b, CapModifyFunc func);
                  clearTagIf(setHardPerms(setKind(((src == Src1) ? a:b), UNSEALED), new_hard_perms), (src == Src1) && unsealIllegal);
              tagged AndPerm                :
                  setPerms(a_mut, pack(getPerms(a)) & truncate(getAddr(b)));
@@ -1909,7 +2111,7 @@ index af716deb..f05a9bdd 100644
              tagged Move                   :
                  a;
              tagged ClearTag               :
-@@ -286,7 +322,7 @@ function CapPipe capModify(CapPipe a, CapPipe b, CapModifyFunc func);
+@@ -286,7 +326,7 @@ function CapPipe capModify(CapPipe a, CapPipe b, CapModifyFunc func);
  endfunction
  
  (* noinline *)
@@ -1918,7 +2120,7 @@ index af716deb..f05a9bdd 100644
      Data res = (case(func) matches
                 tagged TestSubset             :
                     // TODO will be bad for timing. Would like to reuse bounds check
-@@ -303,7 +339,7 @@ function Data capInspect(CapPipe a, CapPipe b, CapInspectFunc func);
+@@ -303,7 +343,7 @@ function Data capInspect(CapPipe a, CapPipe b, CapInspectFunc func);
                 tagged GetTag                 :
                     zeroExtend(pack(isValidCap(a)));
                 tagged GetSealed              :
@@ -1927,7 +2129,7 @@ index af716deb..f05a9bdd 100644
                 tagged GetAddr                :
                     getAddr(a);
                 tagged GetOffset              :
-@@ -315,7 +351,7 @@ function Data capInspect(CapPipe a, CapPipe b, CapInspectFunc func);
+@@ -315,7 +355,7 @@ function Data capInspect(CapPipe a, CapPipe b, CapInspectFunc func);
                 tagged GetHigh                :
                     zeroExtend(tpl_2(toMem(a))[127:64]);
                 tagged GetType                :
@@ -1936,7 +2138,7 @@ index af716deb..f05a9bdd 100644
                 tagged ToPtr                  :
                     (isValidCap(a) ? getAddr(a) - getBase(b) : 0);
                 default: ?;
-@@ -323,12 +359,12 @@ function Data capInspect(CapPipe a, CapPipe b, CapInspectFunc func);
+@@ -323,12 +363,12 @@ function Data capInspect(CapPipe a, CapPipe b, CapInspectFunc func);
      return res;
  endfunction
  
@@ -1952,7 +2154,7 @@ index af716deb..f05a9bdd 100644
      endcase);
      return res;
  endfunction
-@@ -398,7 +434,7 @@ function ControlFlow getControlFlow(DecodedInst dInst, Data rVal1, Data rVal2, A
+@@ -398,7 +438,7 @@ function ControlFlow getControlFlow(DecodedInst dInst, Data rVal1, Data rVal2, A
  endfunction
  */
  (* noinline *)
@@ -1961,7 +2163,7 @@ index af716deb..f05a9bdd 100644
      // just data, addr, and control flow
      CapPipe data = nullCap;
      CapPipe addr = nullCap;
-@@ -412,7 +448,7 @@ function ExecResult basicExec(DecodedInst dInst, CapPipe rVal1, CapPipe rVal2, C
+@@ -412,7 +452,7 @@ function ExecResult basicExec(DecodedInst dInst, CapPipe rVal1, CapPipe rVal2, C
      AluFunc alu_f = dInst.execFunc matches tagged Alu .alu_f ? alu_f : Add;
      Data alu_result = alu(getAddr(rVal1), getAddr(aluVal2), alu_f);
  
@@ -1970,7 +2172,7 @@ index af716deb..f05a9bdd 100644
      CapPipe link_pcc = addPc(pcc, ((orig_inst [1:0] == 2'b11) ? 4 : 2));
  
      // Default branch function is not taken
-@@ -420,14 +456,14 @@ function ExecResult basicExec(DecodedInst dInst, CapPipe rVal1, CapPipe rVal2, C
+@@ -420,14 +460,14 @@ function ExecResult basicExec(DecodedInst dInst, CapPipe rVal1, CapPipe rVal2, C
      cf.taken = aluBr(getAddr(rVal1), getAddr(rVal2), br_f);
      cf.nextPc = brAddrCalc(pcc, rVal1, dInst.iType, fromMaybe(0,getDInstImm(dInst)), cf.taken, orig_inst, newPcc);
  
@@ -1987,7 +2189,7 @@ index af716deb..f05a9bdd 100644
  
      cf.nextPc = setKind(cf.nextPc, UNSEALED);
      cf.mispredict = cf.nextPc != ppc;
-@@ -449,7 +485,7 @@ function ExecResult basicExec(DecodedInst dInst, CapPipe rVal1, CapPipe rVal2, C
+@@ -449,7 +489,7 @@ function ExecResult basicExec(DecodedInst dInst, CapPipe rVal1, CapPipe rVal2, C
              default     : nullWithAddr(alu_result);
          endcase);
      CapMem csr_data = (case (dInst.iType)
@@ -1996,7 +2198,7 @@ index af716deb..f05a9bdd 100644
                         default: nullWithAddr(alu_result);
                      endcase);
      addr = (case (dInst.iType)
-@@ -466,7 +502,8 @@ function Maybe#(Trap) checkForException(
+@@ -466,7 +506,8 @@ function Maybe#(Trap) checkForException(
      ArchRegs regs,
      CsrDecodeInfo csrState,
      CapMem pcc,
@@ -2006,7 +2208,7 @@ index af716deb..f05a9bdd 100644
  ); // regs needed to check if x0 is a src
      Maybe#(Trap) exception = Invalid;
      let prv = csrState.prv;
-@@ -576,7 +613,7 @@ function Maybe#(Trap) checkForException(
+@@ -576,7 +617,7 @@ function Maybe#(Trap) checkForException(
      CapPipe pcc_start = cast(pcc);
      Maybe#(CSR_XCapCause) capException = Invalid;
      if (!isValidCap(pcc_start)) capException = Valid(CSR_XCapCause{cheri_exc_reg: {1'b1,pack(scrAddrPCC)}, cheri_exc_code: cheriExcTagViolation});
@@ -2016,10 +2218,23 @@ index af716deb..f05a9bdd 100644
      if (!isInBounds(pcc_end, True)) capException = Valid(CSR_XCapCause{cheri_exc_reg: {1'b1,pack(scrAddrPCC)}, cheri_exc_code: cheriExcLengthViolation});
      if (!isInBounds(pcc_start, True)) capException = Valid(CSR_XCapCause{cheri_exc_reg: {1'b1,pack(scrAddrPCC)}, cheri_exc_code: cheriExcLengthViolation});
 diff --git a/src_Core/RISCY_OOO/procs/lib/L2Tlb.bsv b/src_Core/RISCY_OOO/procs/lib/L2Tlb.bsv
-index c21d38d6..cffbd146 100644
+index c21d38d..48ce8aa 100644
 --- a/src_Core/RISCY_OOO/procs/lib/L2Tlb.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/L2Tlb.bsv
-@@ -88,6 +88,7 @@ endinterface
+@@ -13,7 +13,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-// 
++//-
++// Colored-Cap modifications: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -88,6 +92,7 @@ endinterface
  typedef union tagged {
      void I;
      DTlbReqIdx D;
@@ -2027,7 +2242,7 @@ index c21d38d6..cffbd146 100644
  } TlbChild deriving(Bits, Eq, FShow);
  typedef struct {
      TlbChild child;
-@@ -105,6 +106,7 @@ interface L2TlbToChildren;
+@@ -105,6 +110,7 @@ interface L2TlbToChildren;
      // flush with I/D TLB
      interface Put#(void) iTlbReqFlush;
      interface Put#(void) dTlbReqFlush;
@@ -2035,7 +2250,7 @@ index c21d38d6..cffbd146 100644
      interface Get#(void) flushDone;
  endinterface
  
-@@ -160,8 +162,9 @@ module mkL2Tlb(L2Tlb::L2Tlb);
+@@ -160,8 +166,9 @@ module mkL2Tlb(L2Tlb::L2Tlb);
      // flush
      Reg#(Bool) iFlushReq <- mkReg(False);
      Reg#(Bool) dFlushReq <- mkReg(False);
@@ -2046,7 +2261,7 @@ index c21d38d6..cffbd146 100644
      Fifo#(1, void) flushDoneQ <- mkCFFifo;
  
      // req/resp with I/D TLBs
-@@ -313,6 +316,7 @@ module mkL2Tlb(L2Tlb::L2Tlb);
+@@ -313,6 +320,7 @@ module mkL2Tlb(L2Tlb::L2Tlb);
          flushDoneQ.enq(?);
          iFlushReq <= False;
          dFlushReq <= False;
@@ -2054,7 +2269,7 @@ index c21d38d6..cffbd146 100644
      endrule
  
      // tlb req rule is preempted by page walk rule, i.e., don't fire when page
-@@ -765,6 +769,11 @@ module mkL2Tlb(L2Tlb::L2Tlb);
+@@ -765,6 +773,11 @@ module mkL2Tlb(L2Tlb::L2Tlb);
                  dFlushReq <= True;
              endmethod
          endinterface
@@ -2067,10 +2282,22 @@ index c21d38d6..cffbd146 100644
      endinterface
  
 diff --git a/src_Core/RISCY_OOO/procs/lib/Performance.bsv b/src_Core/RISCY_OOO/procs/lib/Performance.bsv
-index 68041e5f..914f963f 100644
+index 68041e5..a5d6c07 100644
 --- a/src_Core/RISCY_OOO/procs/lib/Performance.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/Performance.bsv
-@@ -188,6 +188,7 @@ typedef enum {
+@@ -1,6 +1,10 @@
+ 
+ // Copyright (c) 2017 Massachusetts Institute of Technology
+-// 
++//- 
++// Colored-Cap modifications: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -188,6 +192,7 @@ typedef enum {
      DCache,
      ITlb,
      DTlb,
@@ -2079,10 +2306,23 @@ index 68041e5f..914f963f 100644
      DecStage,
      ExeStage,
 diff --git a/src_Core/RISCY_OOO/procs/lib/ProcTypes.bsv b/src_Core/RISCY_OOO/procs/lib/ProcTypes.bsv
-index 6174479c..3327ad89 100644
+index 6174479..bb71e93 100644
 --- a/src_Core/RISCY_OOO/procs/lib/ProcTypes.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/ProcTypes.bsv
-@@ -343,6 +343,7 @@ typedef union tagged {
+@@ -16,7 +16,11 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
+-//
++//-
++// Colored-Cap modifications: 
++//      Author: Hakan Englund, Merve Gulmez
++//      Copyright (c) Ericsson AB 
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -343,6 +347,7 @@ typedef union tagged {
      void SealEntry;
      SrcSelector Unseal;
      void AndPerm;
@@ -2091,10 +2331,27 @@ index 6174479c..3327ad89 100644
      void SetHigh;
      void BuildCap;
 diff --git a/src_Core/RISCY_OOO/procs/lib/SplitLSQ.bsv b/src_Core/RISCY_OOO/procs/lib/SplitLSQ.bsv
-index d0fc2512..be12e759 100644
+index d0fc251..5c09846 100644
 --- a/src_Core/RISCY_OOO/procs/lib/SplitLSQ.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/SplitLSQ.bsv
-@@ -53,6 +53,7 @@ import Exec::*;
+@@ -14,6 +14,16 @@
+ //
+ //     This work was supported by NCSC programme grant 4212611/RFA 15971 ("SafeBet").
+ //-
++//-
++// Colored-Cap Main Designer: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++// Colored-Cap (Atomic L&S, Sealing enforcement )
++//      Author: Hakan Englund, Merve Gulmez
++//      Copyright (c) 2025 Ericsson AB 
++// Colored-Cap ObjID Buffer Implementation 
++//      Copyright (c) 2020 Jonathan Woodruff
++//-
+ //
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+@@ -53,6 +63,7 @@ import Exec::*;
  import FP_Utils::*;
  import CacheUtils::*; // For CLoadTags alignment
  import RegFile::*; // Just for the interface
@@ -2102,7 +2359,7 @@ index d0fc2512..be12e759 100644
  
  // I don't want to export auxiliary functions, so manually export all types
  export LdQMemFunc(..);
-@@ -70,6 +71,7 @@ export SplitLSQ(..);
+@@ -70,6 +81,7 @@ export SplitLSQ(..);
  export mkSplitLSQ;
  export isLdQMemFunc;
  export isStQMemFunc;
@@ -2110,7 +2367,7 @@ index d0fc2512..be12e759 100644
  
  // state transition
  // Ld: enq and Idle -> set computed |-> issue and Executing |-> resp and Done |-> Deq
-@@ -295,6 +297,7 @@ typedef struct {
+@@ -295,6 +307,7 @@ typedef struct {
      LdQTag tag;
      Addr paddr;
      ByteOrTagEn shiftedBE;
@@ -2118,7 +2375,7 @@ index d0fc2512..be12e759 100644
      Bit#(16) pcHash;
  } LSQIssueLdInfo deriving(Bits, Eq, FShow);
  
-@@ -328,6 +331,7 @@ typedef struct {
+@@ -328,6 +341,7 @@ typedef struct {
      Maybe#(Trap)       fault;
      Bool               allowCap;
      Maybe#(LdKilledBy) killed;
@@ -2126,7 +2383,7 @@ index d0fc2512..be12e759 100644
  } LdQDeqEntry deriving (Bits, Eq, FShow);
  
  typedef struct {
-@@ -343,6 +347,7 @@ typedef struct {
+@@ -343,6 +357,7 @@ typedef struct {
      MemTaggedData     stData;
      Bool              allowCapAmoLd;
      Maybe#(Trap)      fault;
@@ -2134,7 +2391,7 @@ index d0fc2512..be12e759 100644
      Bit#(16)          pcHash;
  } StQDeqEntry deriving (Bits, Eq, FShow);
  
-@@ -376,11 +381,15 @@ interface SplitLSQ;
+@@ -376,11 +391,15 @@ interface SplitLSQ;
      method ActionValue#(LSQUpdateAddrResult) updateAddr(
          LdStQTag lsqTag, Maybe#(Trap) fault,
          // below are only meaningful wen fault is Invalid
@@ -2152,7 +2409,7 @@ index d0fc2512..be12e759 100644
      );
      // Get the load to issue
      method LSQIssueLdInfo getIssueLd;
-@@ -561,6 +570,18 @@ function Bool isStQMemFunc(MemFunc f);
+@@ -561,6 +580,18 @@ function Bool isStQMemFunc(MemFunc f);
      endcase);
  endfunction
  
@@ -2171,7 +2428,7 @@ index d0fc2512..be12e759 100644
  // issueQ of LSQ tags for issue
  typedef SpecFifo_SB_deq_enq_C_deq_enq#(2, LSQIssueLdInfo) LSQIssueLdQ;
  (* synthesize *)
-@@ -648,7 +669,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -648,7 +679,7 @@ module mkSplitLSQ(SplitLSQ);
      // request faults), we should first copy the MMIO request to a reg, and
      // then kill using the info in reg.
  
@@ -2180,7 +2437,7 @@ index d0fc2512..be12e759 100644
  
      // we may simplify things in case of single core
      Bool multicore = valueof(CoreNum) > 1;
-@@ -668,10 +689,13 @@ module mkSplitLSQ(SplitLSQ);
+@@ -668,10 +699,13 @@ module mkSplitLSQ(SplitLSQ);
      Vector#(LdQSize, Reg#(Bit#(16)))                ld_pcHash         <- replicateM(mkConfigRegU);
      Vector#(LdQSize, Reg#(Bool))                    ld_waitForOlderSt  <- replicateM(mkConfigRegU);
      Vector#(LdQSize, Ehr#(2, Addr))                 ld_paddr           <- replicateM(mkEhr(?));
@@ -2195,7 +2452,7 @@ index d0fc2512..be12e759 100644
      Vector#(LdQSize, Ehr#(2, Bool))                 ld_executing       <- replicateM(mkEhr(?));
      Vector#(LdQSize, Ehr#(2, Bool))                 ld_done            <- replicateM(mkEhr(?));
      Vector#(LdQSize, Ehr#(3, Maybe#(LdKilledBy)))   ld_killed          <- replicateM(mkEhr(?));
-@@ -687,7 +711,8 @@ module mkSplitLSQ(SplitLSQ);
+@@ -687,7 +721,8 @@ module mkSplitLSQ(SplitLSQ);
      Vector#(LdQSize, Ehr#(3, SpecBits))             ld_specBits        <- replicateM(mkEhr(?));
      Vector#(LdQSize, Ehr#(TAdd#(1, SupSize), Bool)) ld_atCommit        <- replicateM(mkEhr(?));
      // wrong-path load filter (must init to all False)
@@ -2205,7 +2462,7 @@ index d0fc2512..be12e759 100644
      // enq/deq ptr
      Reg#(LdQTag)    ld_enqP <- mkReg(0);
      Ehr#(2, LdQTag) ld_deqP <- mkEhr(0);
-@@ -716,6 +741,18 @@ module mkSplitLSQ(SplitLSQ);
+@@ -716,6 +751,18 @@ module mkSplitLSQ(SplitLSQ);
      let ld_paddr_enqIss  = getVEhrPort(ld_paddr, 1); // assert
      let ld_paddr_resp    = getVEhrPort(ld_paddr, 1);
  
@@ -2224,7 +2481,7 @@ index d0fc2512..be12e759 100644
      let ld_isMMIO_findIss = getVEhrPort(ld_isMMIO, 0);
      let ld_isMMIO_evict   = getVEhrPort(ld_isMMIO, 0); // assert
      let ld_isMMIO_deqLd   = getVEhrPort(ld_isMMIO, 0);
-@@ -731,9 +768,10 @@ module mkSplitLSQ(SplitLSQ);
+@@ -731,9 +778,10 @@ module mkSplitLSQ(SplitLSQ);
  
      let ld_fault_deqLd   = getVEhrPort(ld_fault, 0);
      let ld_fault_updAddr = getVEhrPort(ld_fault, 0); // write
@@ -2238,7 +2495,7 @@ index d0fc2512..be12e759 100644
  
      let ld_computed_findIss = getVEhrPort(ld_computed, 0);
      let ld_computed_deqLd   = getVEhrPort(ld_computed, 0);
-@@ -744,6 +782,13 @@ module mkSplitLSQ(SplitLSQ);
+@@ -744,6 +792,13 @@ module mkSplitLSQ(SplitLSQ);
      let ld_computed_resp    = getVEhrPort(ld_computed, 1); // assert
      let ld_computed_enq     = getVEhrPort(ld_computed, 1); // write
  
@@ -2252,7 +2509,7 @@ index d0fc2512..be12e759 100644
      let ld_executing_findIss   = getVEhrPort(ld_executing, 0);
      let ld_executing_wrongSpec = getVEhrPort(ld_executing, 0);
      let ld_executing_deqLd     = getVEhrPort(ld_executing, 0);
-@@ -826,15 +871,26 @@ module mkSplitLSQ(SplitLSQ);
+@@ -826,15 +881,26 @@ module mkSplitLSQ(SplitLSQ);
      end
      let ld_atCommit_enq = getVEhrPort(ld_atCommit, valueof(SupSize)); // write
  
@@ -2288,7 +2545,7 @@ index d0fc2512..be12e759 100644
  
      Reg#(LdQTag) ld_deqP_deqLd  = ld_deqP[0]; // write
      Reg#(LdQTag) ld_deqP_verify = ld_deqP[0]; // in TSO, C with deqLd
-@@ -853,34 +909,53 @@ module mkSplitLSQ(SplitLSQ);
+@@ -853,34 +919,53 @@ module mkSplitLSQ(SplitLSQ);
      Vector#(StQSize, Reg#(Maybe#(PhyDst)))          st_dst       <- replicateM(mkRegU);
      Vector#(StQSize, Reg#(Bit#(16)))                st_pcHash   <- replicateM(mkRegU);
      Vector#(StQSize, Ehr#(2, Addr))                 st_paddr     <- replicateM(mkEhr(?));
@@ -2351,7 +2608,7 @@ index d0fc2512..be12e759 100644
      let st_isMMIO_verify  = getVEhrPort(st_isMMIO, 0);
      let st_isMMIO_updAddr = getVEhrPort(st_isMMIO, 0); // write
      let st_isMMIO_deqSt   = getVEhrPort(st_isMMIO, 1);
-@@ -894,6 +969,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -894,6 +979,7 @@ module mkSplitLSQ(SplitLSQ);
      let st_stData_updData = getVEhrPort(st_stData, 0); // write
  
      let st_fault_updAddr = getVEhrPort(st_fault, 0); // write
@@ -2359,7 +2616,7 @@ index d0fc2512..be12e759 100644
      let st_fault_deqSt   = getVEhrPort(st_fault, 1);
      let st_fault_enq     = getVEhrPort(st_fault, 1); // write
  
-@@ -902,12 +978,18 @@ module mkSplitLSQ(SplitLSQ);
+@@ -902,12 +988,18 @@ module mkSplitLSQ(SplitLSQ);
      let st_allowCapAmoLd_enq     = getVEhrPort(st_allowCapAmoLd, 1); // write
  
      let st_computed_verify  = getVEhrPort(st_computed, 0);
@@ -2378,7 +2635,7 @@ index d0fc2512..be12e759 100644
      let st_verified_wrongSpec = getVEhrPort(st_verified, 0);
      let st_verified_verify    = getVEhrPort(st_verified, 0); // write
      let st_verified_updAddr   = getVEhrPort(st_verified, 1); // assert
-@@ -1106,8 +1188,10 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1106,8 +1198,10 @@ module mkSplitLSQ(SplitLSQ);
                  !isValid(ld_depSBDeq_findIss[i]) &&
  `endif
                  !isValid(ld_depStQDeq_findIss[i]) && // (5) no dependency
@@ -2391,7 +2648,7 @@ index d0fc2512..be12e759 100644
              );
          endfunction
          Vector#(LdQSize, Bool) ableToIssue = map(canIssue,
-@@ -1120,6 +1204,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1120,6 +1214,7 @@ module mkSplitLSQ(SplitLSQ);
                  tag: tag,
                  paddr: ld_paddr_findIss[tag],
                  shiftedBE: ld_shiftedBE_findIss[tag],
@@ -2399,7 +2656,7 @@ index d0fc2512..be12e759 100644
                  pcHash: ld_pcHash[tag]
              };
              issueLdInfo.wset(info);
-@@ -1199,7 +1284,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1199,7 +1294,7 @@ module mkSplitLSQ(SplitLSQ);
          Vector#(LdQSize, LdQTag) idxVec = genWith(fromInteger);
          joinActions(map(setVerified, idxVec));
  
@@ -2408,7 +2665,7 @@ index d0fc2512..be12e759 100644
      endrule
  
  `ifdef BSIM
-@@ -1298,7 +1383,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1298,7 +1393,7 @@ module mkSplitLSQ(SplitLSQ);
      (* fire_when_enabled, no_implicit_conditions *)
      rule setForEnq;
          ld_can_enq_wire <= !ld_valid[ld_enqP][0];
@@ -2417,7 +2674,7 @@ index d0fc2512..be12e759 100644
      endrule
  
      // deqLd guard (see comments at the method declaration)
-@@ -1316,13 +1401,16 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1316,13 +1411,16 @@ module mkSplitLSQ(SplitLSQ);
                  if(ld_memFunc[deqP] == Ld && !ld_isMMIO_deqLd[deqP]) begin
                      // normal non-MMIO Ld: done, older St (if exists) verified
                      return ld_done_deqLd[deqP] &&
@@ -2439,7 +2696,7 @@ index d0fc2512..be12e759 100644
                  end
              end
          end
-@@ -1341,7 +1429,9 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1341,7 +1439,9 @@ module mkSplitLSQ(SplitLSQ);
              else begin
                  // computed or fence, and at commit
                  return (st_computed_deqSt[deqP] ||
@@ -2450,7 +2707,7 @@ index d0fc2512..be12e759 100644
              end
          end
      endfunction
-@@ -1386,7 +1476,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1386,7 +1486,7 @@ module mkSplitLSQ(SplitLSQ);
      method ActionValue#(LSQHitInfo) getHit(LdStQTag t) if (!wrongSpec_conflict);
          return (case(t) matches
              tagged Ld .tag: (LSQHitInfo {
@@ -2459,7 +2716,7 @@ index d0fc2512..be12e759 100644
                  dst: ld_dst[tag]
              });
              tagged St .tag: (LSQHitInfo {
-@@ -1410,7 +1500,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1410,7 +1510,7 @@ module mkSplitLSQ(SplitLSQ);
                          SpecBits spec_bits,
                          Bit#(16) pcHash) if(ld_can_enq_wire && !wrongSpec_conflict);
          if(verbose) begin
@@ -2468,7 +2725,7 @@ index d0fc2512..be12e759 100644
                       "; ", fshow(inst_tag),
                       "; ", fshow(mem_inst),
                       "; ", fshow(dst),
-@@ -1433,6 +1523,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1433,6 +1533,7 @@ module mkSplitLSQ(SplitLSQ);
          ld_dst[ld_enqP] <= dst;
          ld_fault_enq[ld_enqP] <= Invalid;
          ld_computed_enq[ld_enqP] <= False;
@@ -2476,7 +2733,7 @@ index d0fc2512..be12e759 100644
          ld_executing_enq[ld_enqP] <= False;
          ld_done_enq[ld_enqP] <= False;
          ld_killed_enq[ld_enqP] <= Invalid;
-@@ -1441,6 +1532,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1441,6 +1542,7 @@ module mkSplitLSQ(SplitLSQ);
          ld_readFrom_enq[ld_enqP] <= Invalid;
          ld_depLdQDeq_enq[ld_enqP] <= Invalid;
          ld_depStQDeq_enq[ld_enqP] <= Invalid;
@@ -2484,7 +2741,7 @@ index d0fc2512..be12e759 100644
  `ifndef TSO_MM
          ld_depLdEx_enq[ld_enqP] <= Invalid;
          ld_depSBDeq_enq[ld_enqP] <= Invalid;
-@@ -1468,7 +1560,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1468,7 +1570,7 @@ module mkSplitLSQ(SplitLSQ);
                          SpecBits spec_bits,
                          Bit#(16) pcHash) if(st_can_enq_wire && !wrongSpec_conflict);
          if(verbose) begin
@@ -2493,7 +2750,7 @@ index d0fc2512..be12e759 100644
                       "; ", fshow(inst_tag),
                       "; ", fshow(mem_inst),
                       "; ", fshow(dst),
-@@ -1496,6 +1588,9 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1496,6 +1598,9 @@ module mkSplitLSQ(SplitLSQ);
          st_verified_enq[st_enqP] <= False;
          st_specBits_enq[st_enqP] <= spec_bits;
          st_atCommit_enq[st_enqP] <= False;
@@ -2503,7 +2760,7 @@ index d0fc2512..be12e759 100644
      endmethod
  
      method Action updateData(StQTag t, MemTaggedData d);
-@@ -1509,7 +1604,8 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1509,7 +1614,8 @@ module mkSplitLSQ(SplitLSQ);
  
      method ActionValue#(LSQUpdateAddrResult) updateAddr(
          LdStQTag lsqTag, Maybe#(Trap) fault,
@@ -2513,7 +2770,7 @@ index d0fc2512..be12e759 100644
      ) if (!wrongSpec_conflict);
          // index vec for vector functions
          Vector#(LdQSize, LdQTag) idxVec = genWith(fromInteger);
-@@ -1551,6 +1647,8 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1551,6 +1657,8 @@ module mkSplitLSQ(SplitLSQ);
              ld_fault_updAddr[tag] <= fault;
              ld_computed_updAddr[tag] <= !isValid(fault);
              ld_paddr_updAddr[tag] <= pa;
@@ -2522,7 +2779,7 @@ index d0fc2512..be12e759 100644
              ld_allowCap[tag] <= allowCap;
              ld_isMMIO_updAddr[tag] <= mmio;
              ld_shiftedBE_updAddr[tag] <= shift_be;
-@@ -1583,6 +1681,8 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1583,6 +1691,8 @@ module mkSplitLSQ(SplitLSQ);
              st_allowCapAmoLd_updAddr[tag] <= allowCap;
              st_computed_updAddr[tag] <= !isValid(fault);
              st_paddr_updAddr[tag] <= pa;
@@ -2531,7 +2788,7 @@ index d0fc2512..be12e759 100644
              st_isMMIO_updAddr[tag] <= mmio;
              st_shiftedBE_updAddr[tag] <= shift_be.DataMemAccess;
  
-@@ -1611,7 +1711,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1611,7 +1721,7 @@ module mkSplitLSQ(SplitLSQ);
              $display("[LSQ - updateAddr] ", fshow(lsqTag), "; ", fshow(fault),
                       "; ", fshow(pa), "; ", fshow(mmio), "; ", fshow(shift_be),
                       "; ", fshow(doKill), "; ", fshow(youngerLds),
@@ -2540,7 +2797,7 @@ index d0fc2512..be12e759 100644
          end
  
          // kill younger loads
-@@ -1629,7 +1729,25 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1629,7 +1739,25 @@ module mkSplitLSQ(SplitLSQ);
                  Bool younger = youngerLds[i];
                  Bool overlap = overlapAddr(pa, shift_be,
                                             ld_paddr_updAddr[i],
@@ -2567,7 +2824,7 @@ index d0fc2512..be12e759 100644
                  // figure out if the load reads a stale value. Note that
                  // checking executing bit is enough: every done load must also
                  // have executing bit set.
-@@ -1666,7 +1784,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1666,7 +1794,7 @@ module mkSplitLSQ(SplitLSQ);
                  LdKilledBy by = lsqTag matches tagged Ld .unuse ? Ld : St;
                  ld_killed_updAddr[killTag] <= Valid (by);
                  if(verbose) begin
@@ -2576,7 +2833,7 @@ index d0fc2512..be12e759 100644
                  end
                  // checks
                  doAssert(ld_computed_updAddr[killTag], "must be computed");
-@@ -1679,15 +1797,81 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1679,15 +1807,81 @@ module mkSplitLSQ(SplitLSQ);
          // can be issued
          return LSQUpdateAddrResult {
              waitWPResp: (case(lsqTag) matches
@@ -2659,7 +2916,7 @@ index d0fc2512..be12e759 100644
                                                    ByteOrTagEn shift_be,
                                                    SBSearchRes sbRes) if (!wrongSpec_conflict);
          if(verbose) begin
-@@ -1713,7 +1897,9 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1713,7 +1907,9 @@ module mkSplitLSQ(SplitLSQ);
              !isValid(ld_depStQDeq_issue[tag]),
              "issuing entry should not have dependence"
          );
@@ -2670,7 +2927,7 @@ index d0fc2512..be12e759 100644
  
          // issue result
          LSQIssueLdResult issRes = Stall (StQ);
-@@ -1754,7 +1940,12 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1754,7 +1950,12 @@ module mkSplitLSQ(SplitLSQ);
              Bool computed = st_computed_issue[i];
              Bool overlap = overlapAddr(pa, shift_be,
                                         st_paddr_issue[i],
@@ -2684,7 +2941,7 @@ index d0fc2512..be12e759 100644
              return valid_older && computed && overlap;
          endfunction
          Vector#(StQSize, Bool) overlapSts = map(isOverlapSt,
-@@ -1825,7 +2016,22 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1825,7 +2026,22 @@ module mkSplitLSQ(SplitLSQ);
              Bool unissued = !ld_executing_issue[i];
              Bool overlap = overlapAddr(pa, shift_be,
                                         ld_paddr_issue[i],
@@ -2708,7 +2965,7 @@ index d0fc2512..be12e759 100644
              return valid && older &&
                     (acquire || multicore && computed && unissued && overlap);
          endfunction
-@@ -1842,7 +2048,19 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1842,7 +2058,19 @@ module mkSplitLSQ(SplitLSQ);
              Bool computed = st_computed_issue[i];
              Bool overlap = overlapAddr(pa, shift_be,
                                         st_paddr_issue[i],
@@ -2729,7 +2986,7 @@ index d0fc2512..be12e759 100644
              return valid_older && (acquire || computed && overlap);
          endfunction
          Vector#(StQSize, Bool) checkSts = map(isStNeedCheck,
-@@ -1975,8 +2193,8 @@ module mkSplitLSQ(SplitLSQ);
+@@ -1975,8 +2203,8 @@ module mkSplitLSQ(SplitLSQ);
  `endif
              data: ?
          };
@@ -2740,7 +2997,7 @@ index d0fc2512..be12e759 100644
              res.wrongPath = True;
              res.dst = Invalid; // drop wrong path resp
          end
-@@ -2020,6 +2238,12 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2020,6 +2248,12 @@ module mkSplitLSQ(SplitLSQ);
  
      method LdQDeqEntry firstLd if(deqLdGuard);
          LdQTag deqP = ld_deqP_deqLd;
@@ -2753,7 +3010,7 @@ index d0fc2512..be12e759 100644
          return LdQDeqEntry {
              tag: deqP,
              instTag: ld_instTag[deqP],
-@@ -2032,16 +2256,17 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2032,16 +2266,17 @@ module mkSplitLSQ(SplitLSQ);
              paddr: ld_paddr_deqLd[deqP],
              isMMIO: ld_isMMIO_deqLd[deqP],
              shiftedBE: ld_shiftedBE_deqLd[deqP],
@@ -2774,7 +3031,7 @@ index d0fc2512..be12e759 100644
  
          // sanity check
          if(ld_atCommit_deqLd[deqP]) begin
-@@ -2055,7 +2280,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2055,7 +2290,7 @@ module mkSplitLSQ(SplitLSQ);
              doAssert(!isValid(ld_fault_deqLd[deqP]), "cannot have fault");
              doAssert(ld_executing_deqLd[deqP] && ld_done_deqLd[deqP],
                       "must be done");
@@ -2783,7 +3040,7 @@ index d0fc2512..be12e759 100644
                       "cannot wait for wrong path resp");
          end
          Bool waited = ld_waitForOlderSt[deqP]; // Don't negative train if we waited for older stores.
-@@ -2081,6 +2306,17 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2081,6 +2316,17 @@ module mkSplitLSQ(SplitLSQ);
  
      method StQDeqEntry firstSt if(deqStGuard && wrongSpec_urgent_firstSt);
          StQTag deqP = st_deqP;
@@ -2801,7 +3058,7 @@ index d0fc2512..be12e759 100644
          return StQDeqEntry {
              instTag: st_instTag[deqP],
              memFunc: st_memFunc[deqP],
-@@ -2093,7 +2329,8 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2093,7 +2339,8 @@ module mkSplitLSQ(SplitLSQ);
              shiftedBE: st_shiftedBE_deqSt[deqP],
              stData: st_stData_deqSt[deqP],
              allowCapAmoLd: st_allowCapAmoLd_deqSt[deqP],
@@ -2811,7 +3068,7 @@ index d0fc2512..be12e759 100644
              pcHash: st_pcHash[deqP]
          };
      endmethod
-@@ -2101,7 +2338,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2101,7 +2348,7 @@ module mkSplitLSQ(SplitLSQ);
      method Action deqSt if(deqStGuard && !wrongSpec_conflict);
          StQTag deqP = st_deqP;
  
@@ -2820,7 +3077,7 @@ index d0fc2512..be12e759 100644
  
          // sanity check
          if(!isValid(st_fault_deqSt[deqP])) begin
-@@ -2152,7 +2389,9 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2152,7 +2399,9 @@ module mkSplitLSQ(SplitLSQ);
  
  `ifdef TSO_MM
      method Action cacheEvict(LineAddr lineAddr) if (!wrongSpec_conflict);
@@ -2831,7 +3088,7 @@ index d0fc2512..be12e759 100644
          // kill a load if it satisfies the following conditions:
          // (1) valid
          // (2) executing and read from memory (just killing done loads is not
-@@ -2164,9 +2403,11 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2164,9 +2413,11 @@ module mkSplitLSQ(SplitLSQ);
          function Bool needKill(LdQTag i);
              Bool valid = ld_valid_evict[i];
              Bool executing = ld_executing_evict[i];
@@ -2846,7 +3103,7 @@ index d0fc2512..be12e759 100644
          endfunction
  
          // kill the oldest load
-@@ -2174,7 +2415,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2174,7 +2425,7 @@ module mkSplitLSQ(SplitLSQ);
          if(findOldestLd(killLds) matches tagged Valid .killTag) begin
              ld_killed_evict[killTag] <= Valid (Cache);
              if(verbose) begin
@@ -2855,7 +3112,7 @@ index d0fc2512..be12e759 100644
              end
              // checks
              doAssert(ld_computed_evict[killTag], "must be computed");
-@@ -2236,6 +2477,10 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2236,6 +2487,10 @@ module mkSplitLSQ(SplitLSQ);
          endmethod
  
          method Action incorrectSpeculation(Bool killAll, SpecTag specTag);
@@ -2866,7 +3123,7 @@ index d0fc2512..be12e759 100644
              // idx vec
  
              // clear wrong path LQ entries & set wrong path load filter. NOTE
-@@ -2252,13 +2497,20 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2252,13 +2507,20 @@ module mkSplitLSQ(SplitLSQ);
              action
                  if(ldNeedKill[i]) begin
                      ld_valid_wrongSpec[i] <= False;
@@ -2891,7 +3148,7 @@ index d0fc2512..be12e759 100644
                      end
                      doAssert(!ld_atCommit_wrongSpec[i], "cannot be at commit");
                  end
-@@ -2278,6 +2530,13 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2278,6 +2540,13 @@ module mkSplitLSQ(SplitLSQ);
              action
                  if(stNeedKill[i]) begin
                      st_valid_wrongSpec[i] <= False;
@@ -2905,7 +3162,7 @@ index d0fc2512..be12e759 100644
                      doAssert(!st_atCommit_wrongSpec[i], "cannot be at commit");
                  end
              endaction
-@@ -2295,6 +2554,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2295,6 +2564,7 @@ module mkSplitLSQ(SplitLSQ);
                                                          ldIdxVec);
              LdQTag new_ld_enqP = ld_enqP;
              if(findOldestLd(killedValidLds) matches tagged Valid .t) begin
@@ -2913,7 +3170,7 @@ index d0fc2512..be12e759 100644
                  new_ld_enqP = t;
              end
              ld_enqP <= new_ld_enqP;
-@@ -2332,6 +2592,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2332,6 +2602,7 @@ module mkSplitLSQ(SplitLSQ);
              if(verbose) begin
                  $display("[LSQ - wrongSpec] ", fshow(killAll),
                           "; ", fshow(specTag),
@@ -2921,7 +3178,7 @@ index d0fc2512..be12e759 100644
                           "; ", fshow(new_ld_enqP),
                           "; ", fshow(new_st_enqP),
                           "; ", fshow(new_st_verifyP));
-@@ -2345,7 +2606,7 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2345,7 +2616,7 @@ module mkSplitLSQ(SplitLSQ);
      endinterface
  
      method Bool stqFull_ehrPort0;
@@ -2930,7 +3187,7 @@ index d0fc2512..be12e759 100644
      endmethod
  
      method Bool ldqFull_ehrPort0;
-@@ -2353,6 +2614,6 @@ module mkSplitLSQ(SplitLSQ);
+@@ -2353,6 +2624,6 @@ module mkSplitLSQ(SplitLSQ);
      endmethod
  
      method Bool noWrongPathLoads;
@@ -2939,10 +3196,22 @@ index d0fc2512..be12e759 100644
      endmethod
  endmodule
 diff --git a/src_Core/RISCY_OOO/procs/lib/TlbConnect.bsv b/src_Core/RISCY_OOO/procs/lib/TlbConnect.bsv
-index f04c8ea8..ad64b4e9 100644
+index f04c8ea..53f17de 100644
 --- a/src_Core/RISCY_OOO/procs/lib/TlbConnect.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/TlbConnect.bsv
-@@ -32,9 +32,17 @@ import ITlb::*;
+@@ -1,6 +1,10 @@
+ 
+ // Copyright (c) 2017 Massachusetts Institute of Technology
+-// 
++//-
++// Colored-Cap modifications: 
++//      Author: Hossam ElAtali
++//      Copyright (c) 2025 Secure System's Group
++//-
+ // Permission is hereby granted, free of charge, to any person
+ // obtaining a copy of this software and associated documentation
+ // files (the "Software"), to deal in the Software without
+@@ -32,9 +36,17 @@ import ITlb::*;
  import DTlb::*;
  import L2Tlb::*;
  
@@ -2962,7 +3231,7 @@ index f04c8ea8..ad64b4e9 100644
      rule sendDTlbReq;
          DTlbRqToP r <- toGet(d.rqToP).get;
          l2.rqFromC.put(L2TlbRqFromC {
-@@ -51,6 +59,14 @@ module mkTlbConnect#(ITlbToParent i, DTlbToParent d, L2TlbToChildren l2)(Empty);
+@@ -51,6 +63,14 @@ module mkTlbConnect#(ITlbToParent i, DTlbToParent d, L2TlbToChildren l2)(Empty);
          });
      endrule
  
@@ -2977,7 +3246,7 @@ index f04c8ea8..ad64b4e9 100644
      rule sendRsToDTlb(l2.rsToC.first.child matches tagged D .id);
          L2TlbRsToC r <- toGet(l2.rsToC).get;
          d.ldTransRsFromP.enq(DTlbTransRsFromP {
-@@ -64,11 +80,13 @@ module mkTlbConnect#(ITlbToParent i, DTlbToParent d, L2TlbToChildren l2)(Empty);
+@@ -64,11 +84,13 @@ module mkTlbConnect#(ITlbToParent i, DTlbToParent d, L2TlbToChildren l2)(Empty);
          i.rsFromP.enq(ITlbRsFromP {entry: r.entry});
      endrule
  
@@ -2992,7 +3261,7 @@ index f04c8ea8..ad64b4e9 100644
          i.flush.response.put(?);
      endrule
 diff --git a/src_Core/RISCY_OOO/procs/lib/TlbTypes.bsv b/src_Core/RISCY_OOO/procs/lib/TlbTypes.bsv
-index 51bbd4d2..6afac8aa 100644
+index 51bbd4d..6afac8a 100644
 --- a/src_Core/RISCY_OOO/procs/lib/TlbTypes.bsv
 +++ b/src_Core/RISCY_OOO/procs/lib/TlbTypes.bsv
 @@ -225,7 +225,7 @@ function TlbPermissionCheck hasVMPermission(
@@ -3005,7 +3274,7 @@ index 51bbd4d2..6afac8aa 100644
      end
      else begin
 diff --git a/src_SSITH_P3/xilinx_ip/component.xml b/src_SSITH_P3/xilinx_ip/component.xml
-index a764e79c..bd3820ea 100644
+index a764e79..bd3820e 100644
 --- a/src_SSITH_P3/xilinx_ip/component.xml
 +++ b/src_SSITH_P3/xilinx_ip/component.xml
 @@ -2306,6 +2306,11 @@

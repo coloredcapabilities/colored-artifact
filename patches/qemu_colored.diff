@@ -1,5 +1,5 @@
 diff --git a/disas/riscv.c b/disas/riscv.c
-index a497f3277b..d02df0405c 100644
+index bccc2c1aac..d02df0405c 100644
 --- a/disas/riscv.c
 +++ b/disas/riscv.c
 @@ -526,6 +526,7 @@ typedef enum {
@@ -18,17 +18,16 @@ index a497f3277b..d02df0405c 100644
      [rv_op_csetflags] = { "csetflags", rv_codec_r, rv_fmt_cd_cs1_rs2, NULL, 0, 0, 0 },
      [rv_op_csetoffset] = { "csetoffset", rv_codec_r, rv_fmt_cd_cs1_rs2, NULL, 0, 0, 0 },
      [rv_op_csetaddr] = { "csetaddr", rv_codec_r, rv_fmt_cd_cs1_rs2, NULL, 0, 0, 0 },
-@@ -1474,7 +1476,8 @@ static const char *csr_name(int csrno)
+@@ -1474,6 +1476,8 @@ static const char *csr_name(int csrno)
      case 0x0d81: return "stimeh";
      case 0x0d82: return "sinstreth";
      case 0x0e00: return "hcycle";
--    case 0x07c0: return "ccp";
 +    case 0x0012: return "ccp";
 +    case 0x0013: return "ccpt";
      case 0x0e01: return "htime";
      case 0x0e02: return "hinstret";
      case 0x0e80: return "hcycleh";
-@@ -1529,7 +1532,8 @@ static rv_opcode decode_cheri_inst(rv_inst inst) {
+@@ -1528,7 +1532,8 @@ static rv_opcode decode_cheri_inst(rv_inst inst) {
      // 0001010 unused
      CHERI_THREEOP_CASE(cseal,       0001011,  ..... ..... 000 ..... 1011011 @r)
      CHERI_THREEOP_CASE(cunseal,     0001100,  ..... ..... 000 ..... 1011011 @r)
@@ -38,7 +37,7 @@ index a497f3277b..d02df0405c 100644
      CHERI_THREEOP_CASE(csetflags,   0001110,  ..... ..... 000 ..... 1011011 @r)
      CHERI_THREEOP_CASE(csetoffset,  0001111,  ..... ..... 000 ..... 1011011 @r)
      CHERI_THREEOP_CASE(csetaddr,    0010000,  ..... ..... 000 ..... 1011011 @r)
-@@ -1538,12 +1542,14 @@ static rv_opcode decode_cheri_inst(rv_inst inst) {
+@@ -1537,12 +1542,14 @@ static rv_opcode decode_cheri_inst(rv_inst inst) {
      CHERI_THREEOP_CASE(cfromptr,    0010011,  ..... ..... 000 ..... 1011011 @r)
      CHERI_THREEOP_CASE(csub,        0010100,  ..... ..... 000 ..... 1011011 @r)
      CHERI_THREEOP_CASE(csethigh,    0010110,  ..... ..... 000 ..... 1011011 @r)
@@ -53,11 +52,113 @@ index a497f3277b..d02df0405c 100644
      // 1111011 unused
      // TODO: 1111100 Used for Stores (see below)
      // TODO: 1111101 Used for Loads (see below)
+diff --git a/roms/edk2 b/roms/edk2
+--- a/roms/edk2
++++ b/roms/edk2
+@@ -1 +1 @@
+-Subproject commit 06dc822d045c2bb42e497487935485302486e151
++Subproject commit 06dc822d045c2bb42e497487935485302486e151-dirty
+diff --git a/roms/ipxe b/roms/ipxe
+index 4bd064de23..2012ab71de 160000
+--- a/roms/ipxe
++++ b/roms/ipxe
+@@ -1 +1 @@
+-Subproject commit 4bd064de239dab2426b31c9789a1f4d78087dc63
++Subproject commit 2012ab71de0f2f2a4627156d0da6e1388b84dd48-dirty
+diff --git a/roms/openbios b/roms/openbios
+index 4a0041107b..e7fd10c0ff 160000
+--- a/roms/openbios
++++ b/roms/openbios
+@@ -1 +1 @@
+-Subproject commit 4a0041107b8ef77e0e8337bfcb5f8078887261a7
++Subproject commit e7fd10c0ff40b3bb6752c861b60afcf1cdf0a035-dirty
+diff --git a/roms/opensbi b/roms/opensbi
+index 234ed8e427..9656943bd3 160000
+--- a/roms/opensbi
++++ b/roms/opensbi
+@@ -1 +1 @@
+-Subproject commit 234ed8e427f4d92903123199f6590d144e0d9351
++Subproject commit 9656943bd3a2cad9418465c2a168f907ea52189b-dirty
+diff --git a/roms/qboot b/roms/qboot
+index a5300c4949..8ca302e86d 160000
+--- a/roms/qboot
++++ b/roms/qboot
+@@ -1 +1 @@
+-Subproject commit a5300c4949b8d4de2d34bedfaed66793f48ec948
++Subproject commit 8ca302e86d685fa05b16e2b208888243da319941-dirty
+diff --git a/roms/qemu-palcode b/roms/qemu-palcode
+index bf0e136988..99d9b4dcf2 160000
+--- a/roms/qemu-palcode
++++ b/roms/qemu-palcode
+@@ -1 +1 @@
+-Subproject commit bf0e13698872450164fa7040da36a95d2d4b326f
++Subproject commit 99d9b4dcf27d7fbcbadab71bdc88ef6531baf6bf-dirty
+diff --git a/roms/seabios b/roms/seabios
+index 155821a199..106549a436 160000
+--- a/roms/seabios
++++ b/roms/seabios
+@@ -1 +1 @@
+-Subproject commit 155821a1990b6de78dde5f98fa5ab90e802021e0
++Subproject commit 106549a4362f6b499da522f8f8f5ed9f98388f87-dirty
+diff --git a/roms/seabios-hppa b/roms/seabios-hppa
+index 73b740f771..1a8ada1fb7 160000
+--- a/roms/seabios-hppa
++++ b/roms/seabios-hppa
+@@ -1 +1 @@
+-Subproject commit 73b740f77190643b2ada5ee97a9a108c6ef2a37b
++Subproject commit 1a8ada1fb70643172e251aacbac673c9ecda99e9-dirty
+diff --git a/roms/sgabios b/roms/sgabios
+index cbaee52287..72f39d48be 160000
+--- a/roms/sgabios
++++ b/roms/sgabios
+@@ -1 +1 @@
+-Subproject commit cbaee52287e5f32373181cff50a00b6c4ac9015a
++Subproject commit 72f39d48bedf044e202fd51fecf3e2218fc2ae66-dirty
+diff --git a/roms/skiboot b/roms/skiboot
+index 3a6fdede6c..ecebf4fb3d 160000
+--- a/roms/skiboot
++++ b/roms/skiboot
+@@ -1 +1 @@
+-Subproject commit 3a6fdede6ce117facec0108afe716cf5d0472c3f
++Subproject commit ecebf4fb3d9ca19b0f3c48a3595ac402c731f38f-dirty
+diff --git a/roms/u-boot b/roms/u-boot
+index d3689267f9..5b93c3ec7f 160000
+--- a/roms/u-boot
++++ b/roms/u-boot
+@@ -1 +1 @@
+-Subproject commit d3689267f92c5956e09cc7d1baa4700141662bff
++Subproject commit 5b93c3ec7f9d66dc40d062a47a4a880f7d346b7a-dirty
+diff --git a/roms/u-boot-sam460ex b/roms/u-boot-sam460ex
+index 60b3916f33..1e5f4a1607 160000
+--- a/roms/u-boot-sam460ex
++++ b/roms/u-boot-sam460ex
+@@ -1 +1 @@
+-Subproject commit 60b3916f33e617a815973c5a6df77055b2e3a588
++Subproject commit 1e5f4a1607cc6713d27ffe48dd9de84e69cfc1c2-dirty
+diff --git a/roms/vbootrom b/roms/vbootrom
+index 0c37a43527..1c8e9510b2 160000
+--- a/roms/vbootrom
++++ b/roms/vbootrom
+@@ -1 +1 @@
+-Subproject commit 0c37a43527f0ee2b9584e7fb2fdc805e902635ac
++Subproject commit 1c8e9510b22c5b0fd7d7753f08042a4bcbd2939d-dirty
 diff --git a/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_128.h b/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_128.h
-index d0498cd35f..42a6a125aa 100644
+index d0498cd35f..f4c877c97c 100644
 --- a/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_128.h
 +++ b/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_128.h
-@@ -68,11 +68,13 @@ typedef int64_t cc128_saddr_t;
+@@ -13,6 +13,11 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+  *
++ * 
++ *  Colored-Cap modifications: 
++ *      Author: Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -68,11 +73,13 @@ typedef int64_t cc128_saddr_t;
  #pragma GCC diagnostic push
  #pragma GCC diagnostic ignored "-Wpedantic"
  enum {
@@ -76,7 +177,7 @@ index d0498cd35f..42a6a125aa 100644
      _CC_FIELD(EBT, 90, 64),
  
      _CC_FIELD(INTERNAL_EXPONENT, 90, 90),
-@@ -115,15 +117,15 @@ _CC_STATIC_ASSERT(CC128_HIGHEST_PERM < CC128_FIELD_HWPERMS_MAX_VALUE, "permissio
+@@ -115,15 +122,15 @@ _CC_STATIC_ASSERT(CC128_HIGHEST_PERM < CC128_FIELD_HWPERMS_MAX_VALUE, "permissio
  _CC_STATIC_ASSERT((CC128_HIGHEST_PERM << 1) > CC128_FIELD_HWPERMS_MAX_VALUE, "all permission bits should be used");
  
  #define CC128_PERMS_ALL (0xfff) /* [0...11] */
@@ -95,7 +196,7 @@ index d0498cd35f..42a6a125aa 100644
      _CC_SPECIAL_OTYPE(OTYPE_UNSEALED, 0),
      _CC_SPECIAL_OTYPE(OTYPE_SENTRY, 1),
      _CC_SPECIAL_OTYPE(OTYPE_INDIRECT_PAIR, 2),
-@@ -149,7 +151,7 @@ _CC_STATIC_ASSERT_SAME(CC128_MANTISSA_WIDTH, CC128_FIELD_EXP_ZERO_BOTTOM_SIZE);
+@@ -149,7 +156,7 @@ _CC_STATIC_ASSERT_SAME(CC128_MANTISSA_WIDTH, CC128_FIELD_EXP_ZERO_BOTTOM_SIZE);
  #include "cheri_compressed_cap_common.h"
  
  // Sanity-check mask is the expected NULL encoding
@@ -105,16 +206,28 @@ index d0498cd35f..42a6a125aa 100644
  __attribute__((deprecated("Use cc128_compress_raw"))) static inline uint64_t
  compress_128cap_without_xor(const cc128_cap_t* csp) {
 diff --git a/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_common.h b/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_common.h
-index eb70e29e32..e2b3336cd0 100644
+index eb70e29e32..044926bceb 100644
 --- a/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_common.h
 +++ b/target/cheri-common/cheri-compressed-cap/cheri_compressed_cap_common.h
-@@ -765,9 +765,10 @@ static bool _cc_N(fast_is_representable_new_addr)(const _cc_cap_t* cap, _cc_addr
+@@ -14,6 +14,10 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+  *
++ *  Colored-Cap modifications:  
++ *      Author: Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -765,9 +769,10 @@ static bool _cc_N(fast_is_representable_new_addr)(const _cc_cap_t* cap, _cc_addr
  /* @return whether the operation was able to set precise bounds precise or not */
  static inline bool _cc_N(setbounds_impl)(_cc_cap_t* cap, _cc_length_t req_len, _cc_addr_t* alignment_mask) {
      uint64_t req_base = cap->_cr_cursor;
 -    if (_cc_N(is_cap_sealed)(cap)) {
 -        cap->cr_tag = 0; // Detag sealed inputs to maintain invariants
 -    }
++    // merve 
 +    //if (_cc_N(is_cap_sealed)(cap)) {
 +    //    cap->cr_tag = 0; // Detag sealed inputs to maintain invariants
 +    //}
@@ -122,10 +235,21 @@ index eb70e29e32..e2b3336cd0 100644
      if (!cap->cr_bounds_valid) {
          cap->cr_tag = 0;
 diff --git a/target/cheri-common/cheri-helper-common.h b/target/cheri-common/cheri-helper-common.h
-index 15ed607230..a8aaee0a03 100644
+index 15ed607230..142894b0fc 100644
 --- a/target/cheri-common/cheri-helper-common.h
 +++ b/target/cheri-common/cheri-helper-common.h
-@@ -95,6 +95,7 @@ DEF_HELPER_4(cunseal, void, env, i32, i32, i32)
+@@ -13,6 +13,10 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+  *
++ *  Colored-Cap modifications: 
++ *      Author: Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -95,6 +99,7 @@ DEF_HELPER_4(cunseal, void, env, i32, i32, i32)
  // Three operands (cap cap int)
  DEF_HELPER_4(candaddr, void, env, i32, i32, tl)
  DEF_HELPER_4(candperm, void, env, i32, i32, tl)
@@ -134,10 +258,21 @@ index 15ed607230..a8aaee0a03 100644
  DEF_HELPER_4(cincoffset, void, env, i32, i32, tl)
  
 diff --git a/target/cheri-common/cheri-helper-utils.h b/target/cheri-common/cheri-helper-utils.h
-index 836ee8b97d..46180b7c93 100644
+index 836ee8b97d..78219cc974 100644
 --- a/target/cheri-common/cheri-helper-utils.h
 +++ b/target/cheri-common/cheri-helper-utils.h
-@@ -41,7 +41,7 @@
+@@ -12,6 +12,10 @@
+  * Cambridge Computer Laboratory (Department of Computer Science and
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
++ * 
++ *  Colored-Cap modifications: 
++ *      Author: Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+@@ -41,7 +45,7 @@
  #include "cheri-bounds-stats.h"
  #include "tcg/tcg.h"
  #include "tcg/tcg-op.h"
@@ -146,7 +281,7 @@ index 836ee8b97d..46180b7c93 100644
  
  static inline void derive_cap_from_pcc(CPUArchState *env, uint32_t cd,
                                         target_ulong new_addr, uintptr_t retpc,
-@@ -317,9 +317,16 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
+@@ -317,9 +321,16 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
      if (!cbp->cr_tag) {
          raise_cheri_exception_addr_wnr(env, CapEx_TagViolation, cb, addr,
                                         !is_load);
@@ -163,7 +298,7 @@ index 836ee8b97d..46180b7c93 100644
      } else if (MISSING_REQUIRED_PERM(CAP_PERM_LOAD)) {
          raise_cheri_exception_addr_wnr(env, CapEx_PermitLoadViolation, cb, addr,
                                         false);
-@@ -339,7 +346,6 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
+@@ -339,7 +350,6 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
          }
      }
  #undef MISSING_REQUIRED_PERM
@@ -171,7 +306,7 @@ index 836ee8b97d..46180b7c93 100644
      if (!in_bounds) {
          qemu_log_instr_or_mask_msg(
              env, CPU_LOG_INT,
-@@ -347,7 +353,7 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
+@@ -347,7 +357,7 @@ static inline QEMU_ALWAYS_INLINE target_ulong cap_check_common_reg(
              " base=" TARGET_FMT_lx " top=" TARGET_FMT_lx "\n",
              addr, cap_get_base(cbp), cap_get_top(cbp));
          raise_cheri_exception_addr_wnr(env, CapEx_LengthViolation, cb, addr,
@@ -181,10 +316,21 @@ index 836ee8b97d..46180b7c93 100644
                 !QEMU_IS_ALIGNED_P2(addr, alignment_required)) {
          if (unaligned_handler) {
 diff --git a/target/cheri-common/cheri_defs.h b/target/cheri-common/cheri_defs.h
-index 5023acc9f3..174206b4e2 100644
+index 5023acc9f3..676eefcdcf 100644
 --- a/target/cheri-common/cheri_defs.h
 +++ b/target/cheri-common/cheri_defs.h
-@@ -32,6 +32,7 @@
+@@ -8,6 +8,10 @@
+  * Cambridge Computer Laboratory (Department of Computer Science and
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
++ * 
++ *  Colored-Cap modifications: 
++ *      Author: Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+@@ -32,6 +36,7 @@
   */
  #pragma once
  
@@ -193,10 +339,21 @@ index 5023acc9f3..174206b4e2 100644
  # define cheri_debug_assert(X) do { assert(X); } while (0)
  #else
 diff --git a/target/cheri-common/cheri_utils.h b/target/cheri-common/cheri_utils.h
-index 25136ed789..55d0914323 100644
+index 25136ed789..496b53c44e 100644
 --- a/target/cheri-common/cheri_utils.h
 +++ b/target/cheri-common/cheri_utils.h
-@@ -34,7 +34,7 @@
+@@ -16,6 +16,10 @@
+  * 2. Redistributions in binary form must reproduce the above copyright
+  *    notice, this list of conditions and the following disclaimer in the
+  *    documentation and/or other materials provided with the distribution.
++ * 
++ *  Colored-Cap modifications: 
++ *      Author: Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+  * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+@@ -34,7 +38,7 @@
  #include "qemu/compiler.h"
  #include "qemu/osdep.h"
  #include "qemu/error-report.h"
@@ -205,7 +362,7 @@ index 25136ed789..55d0914323 100644
  #include "cheri_defs.h"
  
  #ifdef TARGET_AARCH64
-@@ -168,9 +168,12 @@ static inline target_long cap_get_otype_signext(const cap_register_t *c)
+@@ -168,9 +172,12 @@ static inline target_long cap_get_otype_signext(const cap_register_t *c)
       * We "sign" extend to a 64-bit number by subtracting the maximum:
       * e.g. for 64-bit CHERI-RISC-V unsigned 2^18-1 maps to 2^64-1
       */
@@ -221,7 +378,7 @@ index 25136ed789..55d0914323 100644
  #endif
  }
  
-@@ -252,6 +255,39 @@ static inline bool cap_is_unsealed(const cap_register_t *c)
+@@ -252,6 +259,39 @@ static inline bool cap_is_unsealed(const cap_register_t *c)
      return otype == CAP_OTYPE_UNSEALED;
  }
  
@@ -262,10 +419,30 @@ index 25136ed789..55d0914323 100644
  {
      assert(c->cr_tag);
 diff --git a/target/cheri-common/op_helper_cheri_common.c b/target/cheri-common/op_helper_cheri_common.c
-index 211efc40de..e94e2a6938 100644
+index 211efc40de..98a248bbf9 100644
 --- a/target/cheri-common/op_helper_cheri_common.c
 +++ b/target/cheri-common/op_helper_cheri_common.c
-@@ -113,10 +113,11 @@ try_set_cap_cursor(CPUArchState *env, const cap_register_t *cptr,
+@@ -5,7 +5,7 @@
+  * Copyright (c) 2016-2018 Alfredo Mazzinghi <am2419@cl.cam.ac.uk>
+  * Copyright (c) 2016-2020 Alex Richardson <Alexander.Richardson@cl.cam.ac.uk>
+  * All rights reserved.
+- *
++ * 
+  * This software was developed by SRI International and the University of
+  * Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-10-C-0237
+  * ("CTSRD"), as part of the DARPA CRASH research programme.
+@@ -15,6 +15,10 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+  *
++ *  Colored-Cap modifications: 
++ *      Author: Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -113,10 +117,11 @@ try_set_cap_cursor(CPUArchState *env, const cap_register_t *cptr,
      oob_info->num_uses++;
  #endif
  
@@ -278,7 +455,7 @@ index 211efc40de..e94e2a6938 100644
  #ifndef TARGET_MORELLO
      /*
       * For Morello we can't just check for in-bounds since changing the sign
-@@ -291,7 +292,6 @@ target_ulong CHERI_HELPER_IMPL(cgetperm(CPUArchState *env, uint32_t cb))
+@@ -291,7 +296,6 @@ target_ulong CHERI_HELPER_IMPL(cgetperm(CPUArchState *env, uint32_t cb))
      cheri_debug_assert((cap_get_uperms(cbp) & CAP_UPERMS_ALL) ==
                             cap_get_uperms(cbp) &&
                         "Unknown SW perms bits set!");
@@ -286,7 +463,7 @@ index 211efc40de..e94e2a6938 100644
      return COMBINED_PERMS_VALUE(cbp);
  }
  
-@@ -326,7 +326,9 @@ target_ulong CHERI_HELPER_IMPL(cgettype(CPUArchState *env, uint32_t cb))
+@@ -326,7 +330,9 @@ target_ulong CHERI_HELPER_IMPL(cgettype(CPUArchState *env, uint32_t cb))
       * CGetType: Move Object Type Field to a General-Purpose Register.
       */
      const cap_register_t *cbp = get_readonly_capreg(env, cb);
@@ -297,7 +474,21 @@ index 211efc40de..e94e2a6938 100644
  #ifdef TARGET_MORELLO
      cheri_debug_assert(otype == cap_get_otype_unsigned(cbp));
  #else
-@@ -965,6 +967,26 @@ void CHERI_HELPER_IMPL(candperm(CPUArchState *env, uint32_t cd, uint32_t cb,
+@@ -950,9 +956,10 @@ void CHERI_HELPER_IMPL(candperm(CPUArchState *env, uint32_t cd, uint32_t cb,
+      */
+     if (!cbp->cr_tag) {
+         raise_cheri_exception_or_invalidate(env, CapEx_TagViolation, cb);
+-    } else if (!cap_is_unsealed(cbp)) {
+-        raise_cheri_exception_or_invalidate(env, CapEx_SealViolation, cb);
+-    }
++    } 
++    //else if (!cap_is_unsealed(cbp)) {
++    //    raise_cheri_exception_or_invalidate(env, CapEx_SealViolation, cb);
++    //}
+ 
+     uint32_t rt_perms = (uint32_t)rt & (CAP_PERMS_ALL);
+     uint32_t rt_uperms = ((uint32_t)rt >> CAP_UPERMS_SHFT) & CAP_UPERMS_ALL;
+@@ -965,6 +972,26 @@ void CHERI_HELPER_IMPL(candperm(CPUArchState *env, uint32_t cd, uint32_t cb,
      update_capreg(env, cd, &result);
  }
  
@@ -324,7 +515,7 @@ index 211efc40de..e94e2a6938 100644
  void CHERI_HELPER_IMPL(cincoffset(CPUArchState *env, uint32_t cd, uint32_t cb,
                                    target_ulong rt))
  {
-@@ -1383,6 +1405,38 @@ void squash_mutable_permissions(CPUArchState *env, target_ulong *pesbt,
+@@ -1383,6 +1410,38 @@ void squash_mutable_permissions(CPUArchState *env, target_ulong *pesbt,
  #endif
  }
  
@@ -363,7 +554,7 @@ index 211efc40de..e94e2a6938 100644
  bool load_cap_from_memory_raw_tag_mmu_idx(
      CPUArchState *env, target_ulong *pesbt, target_ulong *cursor, uint32_t cb,
      const cap_register_t *source, target_ulong vaddr, uintptr_t retpc,
-@@ -1745,3 +1799,7 @@ void helper_capreg_state_debug(CPUArchState *env, uint32_t regnum,
+@@ -1745,3 +1804,7 @@ void helper_capreg_state_debug(CPUArchState *env, uint32_t regnum,
      // Should include the actual state
      assert((flags & (1 << (uint64_t)regstate)) && pc);
  }
@@ -372,39 +563,41 @@ index 211efc40de..e94e2a6938 100644
 +    return GETPC();
 +}
 diff --git a/target/riscv/cpu.c b/target/riscv/cpu.c
-index 1c77126c22..76ad4d1633 100644
+index e0241e381e..76ad4d1633 100644
 --- a/target/riscv/cpu.c
 +++ b/target/riscv/cpu.c
-@@ -727,6 +727,7 @@ static void riscv_cpu_reset(DeviceState *dev)
+@@ -726,6 +726,8 @@ static void riscv_cpu_reset(DeviceState *dev)
+     // Also reset mepc/sepc to zero for predicatable behaviour
      env->mepc = 0;
      env->sepc = 0;
-     env->ccp = 0;
++    env->ccp = 0;
 +    env->ccpt = 0;
  #else
      if (!cpu->cfg.ext_cheri) {
          error_report("CHERI extension can't be disabled yet!");
 diff --git a/target/riscv/cpu.h b/target/riscv/cpu.h
-index 450674b942..e62054a5bd 100644
+index fc2db7c164..e62054a5bd 100644
 --- a/target/riscv/cpu.h
 +++ b/target/riscv/cpu.h
-@@ -154,6 +154,8 @@ struct CPURISCVState {
+@@ -153,7 +153,9 @@ struct CPURISCVState {
+ #endif
  
      target_ulong frm;
-     target_ulong ccp;
+-
++    target_ulong ccp;
 +    target_ulong ccpt;
 +    int counter;
      target_ulong badaddr;
      target_ulong guest_phys_fault_addr;
  #ifdef TARGET_CHERI
 diff --git a/target/riscv/cpu_bits.h b/target/riscv/cpu_bits.h
-index 923c85af63..b97bc80d71 100644
+index 3070c680fc..b97bc80d71 100644
 --- a/target/riscv/cpu_bits.h
 +++ b/target/riscv/cpu_bits.h
-@@ -366,7 +366,8 @@
+@@ -366,6 +366,8 @@
  #define CSR_UCCSR           0x8C0
  #define CSR_SCCSR           0x9C0
  #define CSR_MCCSR           0xBC0
--#define CSR_CCP             0x7C0
 +#define CSR_CCP             0x012
 +#define CSR_CCPT             0x013
  
@@ -431,13 +624,27 @@ index 0452e294dd..e80f799ce0 100644
                        "%s address=%" VADDR_PRIx " ret %d physical "
                        TARGET_FMT_plx " prot %d\n",
 diff --git a/target/riscv/csr.c b/target/riscv/csr.c
-index f21ff9fbed..b3efd0c108 100644
+index eedd44c290..b3efd0c108 100644
 --- a/target/riscv/csr.c
 +++ b/target/riscv/csr.c
-@@ -775,6 +775,19 @@ static int write_ccp(CPURISCVState *env, int csrno, target_ulong val)
+@@ -761,6 +761,33 @@ static int write_mcause(CPURISCVState *env, int csrno, target_ulong val)
+     return 0;
  }
  
- 
++/* csr_ccp read and write */
++static int read_ccp(CPURISCVState *env, int csrno, target_ulong *val)
++{
++  *val = env->ccp;
++  return 0;
++}
++
++static int write_ccp(CPURISCVState *env, int csrno, target_ulong val)
++{
++  env->ccp = val;
++  return 0;
++}
++
++
 +/* csr_ccp read and write */
 +static int read_ccpt(CPURISCVState *env, int csrno, target_ulong *val)
 +{
@@ -454,10 +661,11 @@ index f21ff9fbed..b3efd0c108 100644
  static int read_mbadaddr(CPURISCVState *env, int csrno, target_ulong *val)
  {
      *val = env->mbadaddr;
-@@ -1729,6 +1742,7 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
+@@ -1714,6 +1741,8 @@ riscv_csr_operations csr_ops[CSR_TABLE_SIZE] = {
+     [CSR_UCCSR] =               CSR_OP_FN_RW(umode, read_ccsr, write_ccsr, "uccsr"),
      [CSR_SCCSR] =               CSR_OP_FN_RW(smode, read_ccsr, write_ccsr, "sccsr"),
      [CSR_MCCSR] =               CSR_OP_FN_RW(any, read_ccsr, write_ccsr, "mccsr"),
-     [CSR_CCP] =                 CSR_OP_RW(any, ccp),
++    [CSR_CCP] =                 CSR_OP_RW(any, ccp),
 +    [CSR_CCPT] =                 CSR_OP_RW(any, ccpt),
  #endif
  
@@ -493,3 +701,40 @@ index 955fe6d0c0..034493bdae 100644
  TRANSLATE_CAP_CAP_INT(cfromptr)
  TRANSLATE_CAP_CAP_INT(cincoffset)
  TRANSLATE_CAP_CAP_INT(csetaddr)
+diff --git a/target/riscv/op_helper_cheri.c b/target/riscv/op_helper_cheri.c
+index c00816793b..c3c10bb75b 100644
+--- a/target/riscv/op_helper_cheri.c
++++ b/target/riscv/op_helper_cheri.c
+@@ -249,8 +249,8 @@ void HELPER(amoswap_cap)(CPUArchState *env, uint32_t dest_reg,
+ 
+     if (!cbp->cr_tag) {
+         raise_cheri_exception(env, CapEx_TagViolation, addr_reg);
+-    } else if (!cap_is_unsealed(cbp)) {
+-        raise_cheri_exception(env, CapEx_SealViolation, addr_reg);
++    //} else if (!cap_is_unsealed(cbp)) {
++    //    raise_cheri_exception(env, CapEx_SealViolation, addr_reg);
+     } else if (!cap_has_perms(cbp, CAP_PERM_LOAD)) {
+         raise_cheri_exception(env, CapEx_PermitLoadViolation, addr_reg);
+     } else if (!cap_has_perms(cbp, CAP_PERM_STORE)) {
+@@ -300,8 +300,8 @@ static void lr_c_impl(CPUArchState *env, uint32_t dest_reg, uint32_t auth_reg,
+     const cap_register_t *cbp = get_load_store_base_cap(env, auth_reg);
+     if (!cbp->cr_tag) {
+         raise_cheri_exception(env, CapEx_TagViolation, auth_reg);
+-    } else if (!cap_is_unsealed(cbp)) {
+-        raise_cheri_exception(env, CapEx_SealViolation, auth_reg);
++    //} else if (!cap_is_unsealed(cbp)) {
++    //    raise_cheri_exception(env, CapEx_SealViolation, auth_reg);
+     } else if (!cap_has_perms(cbp, CAP_PERM_LOAD)) {
+         raise_cheri_exception(env, CapEx_PermitLoadViolation, auth_reg);
+     }
+@@ -367,8 +367,8 @@ static target_ulong sc_c_impl(CPUArchState *env, uint32_t addr_reg,
+ 
+     if (!cbp->cr_tag) {
+         raise_cheri_exception(env, CapEx_TagViolation, addr_reg);
+-    } else if (!cap_is_unsealed(cbp)) {
+-        raise_cheri_exception(env, CapEx_SealViolation, addr_reg);
++    //} else if (!cap_is_unsealed(cbp)) {
++    //    raise_cheri_exception(env, CapEx_SealViolation, addr_reg);
+     } else if (!cap_has_perms(cbp, CAP_PERM_STORE)) {
+         raise_cheri_exception(env, CapEx_PermitStoreViolation, addr_reg);
+     } else if (!cap_has_perms(cbp, CAP_PERM_STORE_CAP)) {

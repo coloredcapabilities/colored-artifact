@@ -31,7 +31,7 @@ cd $CHERI_ROOT
 git clone https://github.com/CTSRD-CHERI/cheribsd.git
 cd cheribsd
 git checkout 578ea4f7ef67d589f0ca7d10ec9e383333567421
-git apply $PATCHES_DIR/cheribsd_qemu.diff
+git apply $PATCHES_DIR/cheribsd_colored.diff
 cd $CHERI_ROOT
 
 # Build and run

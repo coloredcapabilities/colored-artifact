@@ -1,5 +1,5 @@
 diff --git a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
-index b3c9a3cc64b2..7ac57ccfaff1 100644
+index b3c9a3cc64b..7ac57ccfaff 100644
 --- a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
 +++ b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
 @@ -50,10 +50,12 @@ unbound_ptr(tsdn_t *tsdn, void *ptr) {
@@ -16,7 +16,7 @@ index b3c9a3cc64b2..7ac57ccfaff1 100644
  	rtree_ctx = tsdn_rtree_ctx(tsdn, &rtree_ctx_fallback);
  	extent = rtree_extent_read(tsdn, &extents_rtree,
 diff --git a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
-index eb860df02b6c..dc5ddd8acc48 100644
+index eb860df02b6..dc5ddd8acc4 100644
 --- a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
 +++ b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
 @@ -121,7 +121,7 @@ JEMALLOC_DIAGNOSTIC_DISABLE_SPURIOUS
@@ -29,7 +29,7 @@ index eb860df02b6c..dc5ddd8acc48 100644
  
  /*
 diff --git a/contrib/jemalloc/src/jemalloc.c b/contrib/jemalloc/src/jemalloc.c
-index fa056015ee7b..8a7ae295c580 100644
+index fa056015ee7..8a7ae295c58 100644
 --- a/contrib/jemalloc/src/jemalloc.c
 +++ b/contrib/jemalloc/src/jemalloc.c
 @@ -3815,6 +3815,7 @@ je_malloc_underlying_allocation(void *ptr) {
@@ -41,7 +41,7 @@ index fa056015ee7b..8a7ae295c580 100644
  	}
  
 diff --git a/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td b/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
-index a836227e1895..2c77ff32ca9e 100644
+index a836227e189..2c77ff32ca9 100644
 --- a/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
 +++ b/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
 @@ -295,6 +295,8 @@ foreach i = 3...31 in
@@ -54,7 +54,7 @@ index a836227e1895..2c77ff32ca9e 100644
  // Machine Counter Setup
  //===----------------------------------------------------------------------===//
 diff --git a/include/stdlib.h b/include/stdlib.h
-index b802a17e4de7..d939d0f52cc0 100644
+index b802a17e4de..d939d0f52cc 100644
 --- a/include/stdlib.h
 +++ b/include/stdlib.h
 @@ -98,6 +98,8 @@ char	*getenv(const char *);
@@ -67,10 +67,22 @@ index b802a17e4de7..d939d0f52cc0 100644
  	    __deprecated1("use malloc_revoke_quarantine_force_flush() instead");
  int	 malloc_revoke_quarantine_force_flush(void);
 diff --git a/lib/libc/gen/tls_malloc.c b/lib/libc/gen/tls_malloc.c
-index 667acdb900d4..e52d05395199 100644
+index 667acdb900d..56e76bce698 100644
 --- a/lib/libc/gen/tls_malloc.c
 +++ b/lib/libc/gen/tls_malloc.c
-@@ -74,16 +74,16 @@
+@@ -1,6 +1,11 @@
+ /*-
+  * Copyright 1996-1998 John D. Polstra.
+  * Copyright (c) 2015-2017 SRI International
++ *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * All rights reserved.
+  *
+  * Redistribution and use in source and binary forms, with or without
+@@ -74,16 +79,16 @@
  #include <stdint.h>
  #include <stdlib.h>
  #include <string.h>
@@ -89,7 +101,7 @@ index 667acdb900d4..e52d05395199 100644
  #endif
  
  static spinlock_t tls_malloc_lock = _SPINLOCK_INITIALIZER;
-@@ -91,7 +91,9 @@ static spinlock_t tls_malloc_lock = _SPINLOCK_INITIALIZER;
+@@ -91,7 +96,9 @@ static spinlock_t tls_malloc_lock = _SPINLOCK_INITIALIZER;
  #define	TLS_MALLOC_UNLOCK	if (__isthreaded) _SPINUNLOCK(&tls_malloc_lock)
  static void morecore(int);
  static void *__tls_malloc_aligned(size_t size, size_t align);
@@ -100,7 +112,7 @@ index 667acdb900d4..e52d05395199 100644
  /*
   * The overhead on a block is one pointer. When free, this space
   * contains a pointer to the next free block. When in use, the first
-@@ -139,8 +141,6 @@ static struct ov_listhead nextf[NBUCKETS];
+@@ -139,8 +146,6 @@ static struct ov_listhead nextf[NBUCKETS];
  
  #ifdef CAPREVOKE
  #define	MAX_QUARANTINE	(1024 * 1024)
@@ -109,7 +121,7 @@ index 667acdb900d4..e52d05395199 100644
  #endif
  
  static const size_t pagesz = PAGE_SIZE;			/* page size */
-@@ -150,13 +150,19 @@ static const size_t pagesz = PAGE_SIZE;			/* page size */
+@@ -150,13 +155,19 @@ static const size_t pagesz = PAGE_SIZE;			/* page size */
  static caddr_t	pagepool_start, pagepool_end;
  static SLIST_HEAD(, pagepool_header) curpp = SLIST_HEAD_INITIALIZER(curpp);
  
@@ -135,7 +147,7 @@ index 667acdb900d4..e52d05395199 100644
  
  static int
  __morepages(int n)
-@@ -202,7 +208,7 @@ __rederive_pointer(void *ptr)
+@@ -202,7 +213,7 @@ __rederive_pointer(void *ptr)
  	SLIST_FOREACH(pp, &curpp, ph_next) {
  		if (cheri_is_address_inbounds(pp, cheri_getbase(ptr))) {
  			TLS_MALLOC_UNLOCK;
@@ -144,7 +156,7 @@ index 667acdb900d4..e52d05395199 100644
  		}
  	}
  	TLS_MALLOC_UNLOCK;
-@@ -216,68 +222,14 @@ bound_ptr(void *mem, size_t nbytes)
+@@ -216,68 +227,14 @@ bound_ptr(void *mem, size_t nbytes)
  	void *ptr;
  
  	ptr = cheri_setbounds(mem, nbytes);
@@ -216,7 +228,7 @@ index 667acdb900d4..e52d05395199 100644
  static void *
  __tls_malloc(size_t nbytes)
  {
-@@ -307,10 +259,6 @@ __tls_malloc(size_t nbytes)
+@@ -307,10 +264,6 @@ __tls_malloc(size_t nbytes)
  	 * request more memory from the system.
  	 */
  	TLS_MALLOC_LOCK;
@@ -227,7 +239,7 @@ index 667acdb900d4..e52d05395199 100644
  	if (SLIST_EMPTY(bucketp)) {
  		morecore(bucket);
  		if (SLIST_EMPTY(bucketp)) {
-@@ -331,6 +279,11 @@ void *
+@@ -331,6 +284,11 @@ void *
  tls_malloc(size_t nbytes)
  {
  	void *mem;
@@ -239,7 +251,7 @@ index 667acdb900d4..e52d05395199 100644
  #ifdef __CHERI_PURE_CAPABILITY__
  	size_t align, mask;
  
-@@ -468,28 +421,51 @@ paint_shadow(void *mem, size_t size)
+@@ -468,28 +426,51 @@ paint_shadow(void *mem, size_t size)
  	    (ptraddr_t)mem, size);
  }
  
@@ -306,7 +318,7 @@ index 667acdb900d4..e52d05395199 100644
  #endif /* CAPREVOKE */
  
  void
-@@ -503,15 +479,16 @@ tls_free(void *cp)
+@@ -503,15 +484,16 @@ tls_free(void *cp)
  	op = find_overhead(cp);
  	if (op == NULL)
  		return;
@@ -328,7 +340,7 @@ index 667acdb900d4..e52d05395199 100644
  	TLS_MALLOC_UNLOCK;
  }
  
-@@ -536,6 +513,10 @@ void *
+@@ -536,6 +518,10 @@ void *
  tls_malloc_aligned(size_t nbytes, size_t align)
  {
  #ifdef __CHERI_PURE_CAPABILITY__
@@ -340,7 +352,7 @@ index 667acdb900d4..e52d05395199 100644
  
  	mask = CHERI_REPRESENTABLE_ALIGNMENT_MASK(nbytes);
 diff --git a/lib/libc/stdlib/Makefile.inc b/lib/libc/stdlib/Makefile.inc
-index 38a4be042b1b..70e18d065a73 100644
+index 38a4be042b1..70e18d065a7 100644
 --- a/lib/libc/stdlib/Makefile.inc
 +++ b/lib/libc/stdlib/Makefile.inc
 @@ -13,7 +13,7 @@ MISRCS+=C99_Exit.c a64l.c abort.c abs.c atexit.c atof.c atoi.c atol.c atoll.c \
@@ -354,7 +366,7 @@ index 38a4be042b1b..70e18d065a73 100644
  
 diff --git a/lib/libc/stdlib/_unrhdr.h b/lib/libc/stdlib/_unrhdr.h
 new file mode 100644
-index 000000000000..13edf40fcbe3
+index 00000000000..13edf40fcbe
 --- /dev/null
 +++ b/lib/libc/stdlib/_unrhdr.h
 @@ -0,0 +1,51 @@
@@ -410,7 +422,7 @@ index 000000000000..13edf40fcbe3
 +
 +#endif
 diff --git a/lib/libc/stdlib/malloc/Symbol.map b/lib/libc/stdlib/malloc/Symbol.map
-index b9a1f8251e15..506f75388db9 100644
+index b9a1f8251e1..506f75388db 100644
 --- a/lib/libc/stdlib/malloc/Symbol.map
 +++ b/lib/libc/stdlib/malloc/Symbol.map
 @@ -2,6 +2,7 @@ FBSD_1.0 {
@@ -422,7 +434,7 @@ index b9a1f8251e15..506f75388db9 100644
  	calloc;
  	realloc;
 diff --git a/lib/libc/stdlib/malloc/malloc_revoke.c b/lib/libc/stdlib/malloc/malloc_revoke.c
-index 9326f12a8344..9469fb4047eb 100644
+index 9326f12a834..9469fb4047e 100644
 --- a/lib/libc/stdlib/malloc/malloc_revoke.c
 +++ b/lib/libc/stdlib/malloc/malloc_revoke.c
 @@ -50,3 +50,7 @@ malloc_is_revoking(void)
@@ -435,7 +447,7 @@ index 9326f12a8344..9469fb4047eb 100644
 +}
 \ No newline at end of file
 diff --git a/lib/libc/stdlib/malloc/mrs/mrs.3 b/lib/libc/stdlib/malloc/mrs/mrs.3
-index e76cd749c5fb..85ac9df5c921 100644
+index e76cd749c5f..85ac9df5c92 100644
 --- a/lib/libc/stdlib/malloc/mrs/mrs.3
 +++ b/lib/libc/stdlib/malloc/mrs/mrs.3
 @@ -173,6 +173,7 @@ interface which takes a capability passed to
@@ -447,10 +459,27 @@ index e76cd749c5fb..85ac9df5c921 100644
  .Dt CHERI_PERM_SW_VMEM
  permission.
 diff --git a/lib/libc/stdlib/malloc/mrs/mrs.c b/lib/libc/stdlib/malloc/mrs/mrs.c
-index cf1f129248ed..b4f237ca38ed 100644
+index cf1f129248e..8445ddb8661 100644
 --- a/lib/libc/stdlib/malloc/mrs/mrs.c
 +++ b/lib/libc/stdlib/malloc/mrs/mrs.c
-@@ -36,6 +36,7 @@
+@@ -1,10 +1,15 @@
+ /*-
+  * Copyright (c) 2019 Brett F. Gutstein
+- *
++ * 
+  * This software was developed by SRI International and the University of
+  * Cambridge Computer Laboratory (Department of Computer Science and
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
++ * 
++ * 
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+@@ -36,6 +41,7 @@
  #include <sys/cpuset.h>
  #include <sys/queue.h>
  #include <sys/sysctl.h>
@@ -458,7 +487,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  #include <cheri/cheri.h>
  #include <cheri/cheric.h>
-@@ -65,6 +66,9 @@
+@@ -65,6 +71,9 @@
  
  #include "libc_private.h"
  #include "mrs_utrace.h"
@@ -468,7 +497,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  /*
   * Knobs:
-@@ -95,7 +99,6 @@
+@@ -95,7 +104,6 @@
   * size to QUARANTINE_NUMERATOR / QUARANTINE_DENOMINATOR times the size
   * of the heap (default 1/4).
   */
@@ -476,7 +505,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  #ifdef QUARANTINE_RATIO
  #error QUARANTINE_RATIO is obsolete, use QUARANTINE_NUMERATOR/QUARANTINE_DENOMINATOR
  #endif
-@@ -172,7 +175,7 @@ void REAL(sdallocx)(void *, size_t, int);
+@@ -172,7 +180,7 @@ void REAL(sdallocx)(void *, size_t, int);
   */
  
  /* functions */
@@ -485,7 +514,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  static void *mrs_malloc(size_t);
  static void mrs_free(void *);
  static void *mrs_calloc(size_t, size_t);
-@@ -307,17 +310,23 @@ static const size_t CAPREVOKE_BITMAP_ALIGNMENT = sizeof(void *);
+@@ -307,17 +315,23 @@ static const size_t CAPREVOKE_BITMAP_ALIGNMENT = sizeof(void *);
  static const size_t DESCRIPTOR_SLAB_ENTRIES = 10000;
  static const size_t MIN_REVOKE_HEAP_SIZE = 8 * 1024 * 1024;
  
@@ -511,7 +540,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  static unsigned int quarantine_denominator = QUARANTINE_DENOMINATOR;
  static unsigned int quarantine_numerator = QUARANTINE_NUMERATOR;
-@@ -379,9 +388,6 @@ static struct mrs_descriptor_slab * _Atomic free_descriptor_slabs;
+@@ -379,9 +393,6 @@ static struct mrs_descriptor_slab * _Atomic free_descriptor_slabs;
   * amount of memory that the allocator views as allocated (includes
   * quarantine)
   */
@@ -521,7 +550,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  /*
   * Quarantine arenas for application threads.  At any given time, one is in
   * active use, and the others are being cleaned.
-@@ -389,20 +395,12 @@ static size_t max_allocated_size;
+@@ -389,20 +400,12 @@ static size_t max_allocated_size;
  #define	APP_QUARANTINE_ARENAS	2
  _Static_assert(APP_QUARANTINE_ARENAS >= 2,
      "APP_QUARANTINE_ARENAS must be at least 2");
@@ -543,7 +572,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  #ifdef OFFLOAD_QUARANTINE
  /* quarantine for the offload thread */
-@@ -432,6 +430,16 @@ mrs_puts(const char *p)
+@@ -432,6 +435,16 @@ mrs_puts(const char *p)
  	}								\
  } while (0)
  
@@ -560,7 +589,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  /*
   * Hack to initialize mutexes without calling malloc.  Without this, locking
   * operations in allocation functions would cause an infinite loop.  The buf
-@@ -464,6 +472,7 @@ _pthread_mutex_init_calloc_cb(pthread_mutex_t *mutex,
+@@ -464,6 +477,7 @@ _pthread_mutex_init_calloc_cb(pthread_mutex_t *mutex,
  	_pthread_mutex_init_calloc_cb(&name, name ## _storage)
  
  create_lock(app_quarantine_lock);
@@ -568,7 +597,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  /* quarantine offload support */
  #ifdef OFFLOAD_QUARANTINE
-@@ -589,14 +598,6 @@ alloc_descriptor_slab(void)
+@@ -589,14 +603,6 @@ alloc_descriptor_slab(void)
   * Sometimes malloc implementations are recursive in which case we leak some
   * space.  This was observed in snmalloc for allocations of size 0x20.
   */
@@ -583,7 +612,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  static inline void
  clear_region(void *mem, size_t len)
-@@ -620,40 +621,6 @@ clear_region(void *mem, size_t len)
+@@ -620,40 +626,6 @@ clear_region(void *mem, size_t len)
  	}
  }
  
@@ -624,7 +653,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  /*
   * Given a pointer freed by the application, validate it by (1) checking that
   * the pointer has an underlying allocation (was actually allocated by the
-@@ -687,115 +654,26 @@ validate_freed_pointer(void *ptr)
+@@ -687,115 +659,26 @@ validate_freed_pointer(void *ptr)
  	}
  	/*mrs_debug_printf("freed underlying allocation %#p\n", underlying_allocation);*/
  
@@ -697,7 +726,7 @@ index cf1f129248ed..b4f237ca38ed 100644
 +	int otype = cheri_gettype(ptr);
 +	if(otype==-1){
 +		return (underlying_allocation);
-+	}
+ 	}
 +	int byte_offset = otype/8;
 +	int bit_offset = otype%8;
 +	char sealing_byte = ((char*)global_sealing_bitmap)[byte_offset];
@@ -706,7 +735,7 @@ index cf1f129248ed..b4f237ca38ed 100644
 +	if((sealing_byte>>bit_offset)&1){
 +		mrs_debug_printf("validate_freed_pointer: memory already freed\n");
 +		exit(-1);
- 	}
++	}
 +	//set sealing bitmap value
 +	((char*)global_sealing_bitmap)[byte_offset] = sealing_byte | (1<<bit_offset);
 +	asm("fence\n\t");
@@ -755,7 +784,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  /*
   * Kick off an asynchronous revocation pass for the current application
   * quarantine arena, and/or check to see whether a previously scheduled pass has
-@@ -804,57 +682,70 @@ app_quarantine_remove(struct mrs_quarantine *to, struct mrs_quarantine *src)
+@@ -804,57 +687,70 @@ app_quarantine_remove(struct mrs_quarantine *to, struct mrs_quarantine *src)
   * This function assumes that the application quarantine lock is held and will
   * drop it before returning.
   */
@@ -868,7 +897,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  }
  
  /*
-@@ -865,20 +756,7 @@ app_quarantine_revoke_async(void)
+@@ -865,20 +761,7 @@ app_quarantine_revoke_async(void)
  static void
  malloc_revoke_quarantine_force_flush_async(void)
  {
@@ -890,7 +919,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  }
  
  #if defined(PRINT_CAPREVOKE) || defined(PRINT_CAPREVOKE_MRS)
-@@ -959,87 +837,6 @@ print_cheri_revoke_stats(char *what, struct cheri_revoke_syscall_info *crsi,
+@@ -959,87 +842,6 @@ print_cheri_revoke_stats(char *what, struct cheri_revoke_syscall_info *crsi,
  }
  #endif /* PRINT_CAPREVOKE */
  
@@ -978,7 +1007,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  /*
   * Perform revocation then iterate through the quarantine and free entries with
   * non-zero underlying size (offload thread sets unvalidated caps to have zero
-@@ -1048,7 +845,7 @@ quarantine_flush(struct mrs_quarantine *quarantine)
+@@ -1048,7 +850,7 @@ quarantine_flush(struct mrs_quarantine *quarantine)
   * Supports ablation study knobs.
   */
  static void
@@ -987,7 +1016,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  {
  	/* Don't read epoch until all bitmap painting is done. */
  	atomic_thread_fence(memory_order_acq_rel);
-@@ -1079,24 +876,15 @@ quarantine_revoke(struct mrs_quarantine *quarantine)
+@@ -1079,24 +881,15 @@ quarantine_revoke(struct mrs_quarantine *quarantine)
  		(void)cheri_revoke(
  		    CHERI_REVOKE_LAST_PASS | CHERI_REVOKE_TAKE_STATS,
  		    start_epoch, NULL);
@@ -1015,7 +1044,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  {
  #ifdef OFFLOAD_QUARANTINE
  
-@@ -1134,8 +922,6 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
+@@ -1134,8 +927,6 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
  	snmalloc_print_stats();
  #endif
  
@@ -1024,7 +1053,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  	mrs_unlock(&offload_quarantine_lock);
  	if (pthread_cond_signal(&offload_quarantine_ready)) {
  		mrs_puts("pthread error\n");
-@@ -1147,7 +933,7 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
+@@ -1147,7 +938,7 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
  #ifdef PRINT_CAPREVOKE_MRS
  	mrs_puts("malloc_revoke_quarantine_force_flush\n");
  #endif
@@ -1033,7 +1062,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  #ifdef SNMALLOC_FLUSH
  	/* Consume pending messages now in our queue. */
  	snmalloc_flush_message_queue();
-@@ -1162,23 +948,17 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
+@@ -1162,23 +953,17 @@ _internal_quarantine_flush(struct mrs_quarantine *quarantine)
  int
  malloc_revoke_quarantine_force_flush(void)
  {
@@ -1060,7 +1089,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  	return (0);
  }
  
-@@ -1211,48 +991,34 @@ malloc_is_revoking(void)
+@@ -1211,48 +996,34 @@ malloc_is_revoking(void)
   * runs out of memory and before it calls mmap, but this is not possible from
   * the wrapper.
   */
@@ -1126,7 +1155,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  }
  
  /* constructor and destructor */
-@@ -1288,6 +1054,7 @@ static void
+@@ -1288,6 +1059,7 @@ static void
  mrs_init_impl_locked(void)
  {
  	initialize_lock(app_quarantine_lock);
@@ -1134,7 +1163,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  	initialize_lock(printf_lock);
  
  #ifdef OFFLOAD_QUARANTINE
-@@ -1409,34 +1176,39 @@ mrs_init_impl_locked(void)
+@@ -1409,34 +1181,39 @@ mrs_init_impl_locked(void)
  	}
  	if (!quarantining)
  		goto nosys;
@@ -1195,7 +1224,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  #if defined(PRINT_CAPREVOKE) || defined(PRINT_CAPREVOKE_MRS) || defined(PRINT_STATS)
  	mrs_puts(VERSION_STRING);
-@@ -1468,6 +1240,15 @@ mrs_constructor(void)
+@@ -1468,6 +1245,15 @@ mrs_constructor(void)
  	mrs_init();
  }
  
@@ -1211,7 +1240,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  #ifdef PRINT_STATS
  __attribute__((destructor))
  static void
-@@ -1485,6 +1266,20 @@ fini(void)
+@@ -1485,6 +1271,20 @@ fini(void)
  }
  #endif /* PRINT_STATS */
  
@@ -1232,7 +1261,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  /* mrs functions */
  
  static void *
-@@ -1503,7 +1298,7 @@ mrs_malloc(size_t size)
+@@ -1503,7 +1303,7 @@ mrs_malloc(size_t size)
  
  	/*mrs_debug_printf("mrs_malloc: called\n");*/
  
@@ -1241,7 +1270,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  	void *allocated_region;
  
-@@ -1516,35 +1311,106 @@ mrs_malloc(size_t size)
+@@ -1516,35 +1316,106 @@ mrs_malloc(size_t size)
  	 * for size=0 we might want to pass those calls through, but none
  	 * of the currently supported allocators do.
  	 */
@@ -1350,7 +1379,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  void *
  mrs_calloc(size_t number, size_t size)
  {
-@@ -1561,7 +1427,7 @@ mrs_calloc(size_t number, size_t size)
+@@ -1561,7 +1432,7 @@ mrs_calloc(size_t number, size_t size)
  	 */
  	/*mrs_debug_printf("mrs_calloc: called\n");*/
  
@@ -1359,7 +1388,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  	void *allocated_region;
  
-@@ -1579,20 +1445,23 @@ mrs_calloc(size_t number, size_t size)
+@@ -1579,20 +1450,23 @@ mrs_calloc(size_t number, size_t size)
  		allocated_region = mrs_real_calloc(1, CAPREVOKE_BITMAP_ALIGNMENT);
  	else
  		allocated_region = mrs_real_calloc(number, size);
@@ -1385,7 +1414,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  	MRS_UTRACE(UTRACE_MRS_CALLOC, NULL, size, number, allocated_region);
  	return (allocated_region);
  }
-@@ -1619,7 +1488,7 @@ mrs_posix_memalign(void **ptr, size_t alignment, size_t size)
+@@ -1619,7 +1493,7 @@ mrs_posix_memalign(void **ptr, size_t alignment, size_t size)
  	mrs_debug_printf("mrs_posix_memalign: called ptr %p alignment %zu size %zu\n",
  	    ptr, alignment, size);
  
@@ -1394,7 +1423,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  	if (alignment < CAPREVOKE_BITMAP_ALIGNMENT)
  		alignment = CAPREVOKE_BITMAP_ALIGNMENT;
-@@ -1633,7 +1502,8 @@ mrs_posix_memalign(void **ptr, size_t alignment, size_t size)
+@@ -1633,7 +1507,8 @@ mrs_posix_memalign(void **ptr, size_t alignment, size_t size)
  	clear_region(*ptr, cheri_getlen(*ptr));
  #endif /* CLEAR_ON_ALLOC */
  
@@ -1404,7 +1433,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  	MRS_UTRACE(UTRACE_MRS_POSIX_MEMALIGN, NULL, size, alignment, *ptr);
  	return (ret);
-@@ -1656,7 +1526,7 @@ mrs_aligned_alloc(size_t alignment, size_t size)
+@@ -1656,7 +1531,7 @@ mrs_aligned_alloc(size_t alignment, size_t size)
  	mrs_debug_printf("mrs_aligned_alloc: called alignment %zu size %zu\n",
  	    alignment, size);
  
@@ -1413,7 +1442,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  	if (alignment < CAPREVOKE_BITMAP_ALIGNMENT)
  		alignment = CAPREVOKE_BITMAP_ALIGNMENT;
-@@ -1672,7 +1542,7 @@ mrs_aligned_alloc(size_t alignment, size_t size)
+@@ -1672,7 +1547,7 @@ mrs_aligned_alloc(size_t alignment, size_t size)
  	clear_region(allocated_region, cheri_getlen(allocated_region));
  #endif /* CLEAR_ON_ALLOC */
  
@@ -1422,7 +1451,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  
  	MRS_UTRACE(UTRACE_MRS_ALIGNED_ALLOC, NULL, size, alignment,
  	    allocated_region);
-@@ -1764,17 +1634,15 @@ mrs_free(void *ptr)
+@@ -1764,17 +1639,15 @@ mrs_free(void *ptr)
  		else
  			return;
  	}
@@ -1444,7 +1473,7 @@ index cf1f129248ed..b4f237ca38ed 100644
  }
  
  static void *
-@@ -1943,7 +1811,7 @@ mrs_offload_thread(void *arg)
+@@ -1943,7 +1816,7 @@ mrs_offload_thread(void *arg)
  
  		mrs_debug_printf("mrs_offload_thread: flushing validated quarantine size %zu\n", offload_quarantine.size);
  
@@ -1455,15 +1484,20 @@ index cf1f129248ed..b4f237ca38ed 100644
  		mrs_printf("mrs_offload_thread: application quarantine's (unvalidated) size "
 diff --git a/lib/libc/stdlib/u_subr_unit.c b/lib/libc/stdlib/u_subr_unit.c
 new file mode 100644
-index 000000000000..15e81d9e383b
+index 00000000000..81acead157b
 --- /dev/null
 +++ b/lib/libc/stdlib/u_subr_unit.c
-@@ -0,0 +1,1479 @@
+@@ -0,0 +1,1484 @@
 +/*-
 + * SPDX-License-Identifier: BSD-2-Clause
 + *
 + * Copyright (c) 2004 Poul-Henning Kamp
 + * All rights reserved.
++ * 
++ * 
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
 + *
 + * Redistribution and use in source and binary forms, with or without
 + * modification, are permitted provided that the following conditions
@@ -2940,7 +2974,7 @@ index 000000000000..15e81d9e383b
 +#endif
 diff --git a/lib/libc/stdlib/u_subr_unit.h b/lib/libc/stdlib/u_subr_unit.h
 new file mode 100644
-index 000000000000..be717cd85e39
+index 00000000000..be717cd85e3
 --- /dev/null
 +++ b/lib/libc/stdlib/u_subr_unit.h
 @@ -0,0 +1,46 @@
@@ -2992,7 +3026,7 @@ index 000000000000..be717cd85e39
 +void copy_unrhdr(struct unrhdr *old_uh, struct unrhdr *new_uh);
 \ No newline at end of file
 diff --git a/lib/libmalloc_simple/Makefile b/lib/libmalloc_simple/Makefile
-index 3d39499e076a..3d375cc27707 100644
+index 3d39499e076..3d375cc2770 100644
 --- a/lib/libmalloc_simple/Makefile
 +++ b/lib/libmalloc_simple/Makefile
 @@ -5,7 +5,10 @@
@@ -3008,10 +3042,21 @@ index 3d39499e076a..3d375cc27707 100644
  .if ${MACHINE_ABI:Mpurecap} && ${MK_CHERI_CAPREVOKE} == "yes"
  CFLAGS+=	-DCAPREVOKE
 diff --git a/lib/libmalloc_simple/malloc.c b/lib/libmalloc_simple/malloc.c
-index 2fce0b084531..1727d0b45c61 100644
+index 2fce0b08453..66d762a0983 100644
 --- a/lib/libmalloc_simple/malloc.c
 +++ b/lib/libmalloc_simple/malloc.c
-@@ -63,6 +63,7 @@ static char *rcsid = "$FreeBSD$";
+@@ -2,6 +2,10 @@
+  * Copyright (c) 1983 Regents of the University of California.
+  * Copyright (c) 2015 SRI International
+  * All rights reserved.
++ * 
++ * Colored-Cap modifications: 
++ *      Author: Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+@@ -63,6 +67,7 @@ static char *rcsid = "$FreeBSD$";
  #include <stdint.h>
  #include <stdlib.h>
  #include <string.h>
@@ -3019,7 +3064,7 @@ index 2fce0b084531..1727d0b45c61 100644
  
  #include "malloc_heap.h"
  
-@@ -80,6 +81,7 @@ static char *rcsid = "$FreeBSD$";
+@@ -80,6 +85,7 @@ static char *rcsid = "$FreeBSD$";
  #define	error_printf(...)	fprintf(stderr, __VA_ARGS__)
  #endif
  
@@ -3027,7 +3072,7 @@ index 2fce0b084531..1727d0b45c61 100644
  static void morecore(int);
  
  /*
-@@ -122,16 +124,6 @@ static_assert(sizeof(struct overhead) == sizeof(void *), "bad size");
+@@ -122,16 +128,6 @@ static_assert(sizeof(struct overhead) == sizeof(void *), "bad size");
  #define	NBUCKETS 30
  static struct ov_listhead nextf[NBUCKETS];
  
@@ -3044,7 +3089,7 @@ index 2fce0b084531..1727d0b45c61 100644
  static	size_t pagesz;			/* page size */
  
  
-@@ -150,124 +142,84 @@ botch(const char *s)
+@@ -150,124 +146,84 @@ botch(const char *s)
  #define	ASSERT(p)
  #endif
  
@@ -3221,7 +3266,7 @@ index 2fce0b084531..1727d0b45c61 100644
  
  static void *
  __simple_malloc_unaligned(size_t nbytes)
-@@ -306,10 +258,6 @@ __simple_malloc_unaligned(size_t nbytes)
+@@ -306,10 +262,6 @@ __simple_malloc_unaligned(size_t nbytes)
  	 * If nothing in hash bucket right now,
  	 * request more memory from the system.
  	 */
@@ -3232,7 +3277,7 @@ index 2fce0b084531..1727d0b45c61 100644
  	if (SLIST_EMPTY(bucketp)) {
  		morecore(bucket);
  		if (SLIST_EMPTY(bucketp))
-@@ -350,6 +298,12 @@ __simple_malloc(size_t nbytes)
+@@ -350,6 +302,12 @@ __simple_malloc(size_t nbytes)
  #ifdef __CHERI_PURE_CAPABILITY__
  	size_t align, mask;
  
@@ -3245,7 +3290,7 @@ index 2fce0b084531..1727d0b45c61 100644
  	mask = CHERI_REPRESENTABLE_ALIGNMENT_MASK(nbytes);
  	nbytes = CHERI_REPRESENTABLE_LENGTH(nbytes);
  	align = 1 + ~mask;
-@@ -480,6 +434,8 @@ find_overhead(void * cp)
+@@ -480,6 +438,8 @@ find_overhead(void * cp)
  	return (NULL);
  }
  
@@ -3254,7 +3299,7 @@ index 2fce0b084531..1727d0b45c61 100644
  static void
  __simple_free(void *cp)
  {
-@@ -489,16 +445,15 @@ __simple_free(void *cp)
+@@ -489,16 +449,15 @@ __simple_free(void *cp)
  	if (cp == NULL)
  		return;
  	op = find_overhead(cp);
@@ -3275,7 +3320,7 @@ index 2fce0b084531..1727d0b45c61 100644
  }
  
  static void *
-@@ -512,6 +467,11 @@ __simple_realloc(void *cp, size_t nbytes)
+@@ -512,6 +471,11 @@ __simple_realloc(void *cp, size_t nbytes)
  #ifdef __CHERI_PURE_CAPABILITY__
  	/* Round up here because we might need to set bounds... */
  	nbytes = CHERI_REPRESENTABLE_LENGTH(nbytes);
@@ -3288,10 +3333,21 @@ index 2fce0b084531..1727d0b45c61 100644
  
  	if (cp == NULL)
 diff --git a/sys/arm64/arm64/cheri_revoke_machdep.c b/sys/arm64/arm64/cheri_revoke_machdep.c
-index 3b029dd5c93a..0188afe602f2 100644
+index 3b029dd5c93..38015fcba30 100644
 --- a/sys/arm64/arm64/cheri_revoke_machdep.c
 +++ b/sys/arm64/arm64/cheri_revoke_machdep.c
-@@ -268,7 +268,7 @@ vm_cheri_revoke_test(const struct vm_cheri_revoke_cookie *crc, uintcap_t cut)
+@@ -8,6 +8,10 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -268,7 +272,7 @@ vm_cheri_revoke_test(const struct vm_cheri_revoke_cookie *crc, uintcap_t cut)
  		enable_user_memory_access();
  #endif
  		res = crc->map->vm_cheri_revoke_test(crc->crshadow, cut,
@@ -3301,7 +3357,7 @@ index 3b029dd5c93a..0188afe602f2 100644
  		disable_user_memory_access();
  		curthread->td_pcb->pcb_onfault = prev_onfault;
 diff --git a/sys/arm64/include/cherireg.h b/sys/arm64/include/cherireg.h
-index 6caca2a9dc88..f6dd20bace21 100644
+index 6caca2a9dc8..f6dd20bace2 100644
 --- a/sys/arm64/include/cherireg.h
 +++ b/sys/arm64/include/cherireg.h
 @@ -128,7 +128,7 @@
@@ -3314,10 +3370,21 @@ index 6caca2a9dc88..f6dd20bace21 100644
  #define	CHERI_PERMS_USERSPACE_SEALCAP					\
  	(CHERI_PERM_GLOBAL | CHERI_PERM_SEAL | CHERI_PERM_UNSEAL)
 diff --git a/sys/cheri/revoke.h b/sys/cheri/revoke.h
-index fe7cf80d275e..364ac4c22730 100644
+index fe7cf80d275..bba55f8b007 100644
 --- a/sys/cheri/revoke.h
 +++ b/sys/cheri/revoke.h
-@@ -274,6 +274,7 @@ struct cheri_revoke_info {
+@@ -5,6 +5,10 @@
+  * Copyright (c) 2020-2022 Microsoft Corp.
+  * All rights reserved.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * This software was developed by SRI International and the University of
+  * Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-10-C-0237
+  * ("CTSRD"), as part of the DARPA CRASH research programme.
+@@ -274,6 +278,7 @@ struct cheri_revoke_info {
  	const ptraddr_t			base_otype;
  
  	struct cheri_revoke_epochs	epochs;
@@ -3325,22 +3392,22 @@ index fe7cf80d275e..364ac4c22730 100644
  };
  
  struct cheri_revoke_syscall_info {
-@@ -300,8 +301,12 @@ struct cheri_revoke_syscall_info {
+@@ -300,8 +305,12 @@ struct cheri_revoke_syscall_info {
   * minimal-bookkeeping version of libmrs uses this, and that's very convenient.
   */
  #define	CHERI_REVOKE_SHADOW_NOVMEM_ENTIRE	0x07	/* The entire shadow region */
 + 
 +#define CHERI_CC_SEALING_BITMAP				0x08    /* Colored capability sealing bitmap */
 +#define CHERI_CC_SEALING_BITMAP_COPY		0x09    /* Colored capability sealing bitmap copy*/
++
  
 -#define	CHERI_REVOKE_SHADOW_SPACE_MASK		0x07	/* Flag bits for shadow index */
-+
 +#define	CHERI_REVOKE_SHADOW_SPACE_MASK		0xf	/* Flag bits for shadow index */
  
  #ifndef _KERNEL
  /*
 diff --git a/sys/conf/files b/sys/conf/files
-index f52b7a952209..0dbedc5f24e5 100644
+index f52b7a95220..0dbedc5f24e 100644
 --- a/sys/conf/files
 +++ b/sys/conf/files
 @@ -396,6 +396,7 @@ cheri/cheri_tags.c			optional cpu_cheri
@@ -3352,10 +3419,21 @@ index f52b7a952209..0dbedc5f24e5 100644
  # dtrace specific
  cddl/contrib/opensolaris/uts/common/dtrace/dtrace.c	optional dtrace compile-with "${DTRACE_C}" \
 diff --git a/sys/kern/kern_cheri_revoke.c b/sys/kern/kern_cheri_revoke.c
-index c36258b617d5..86d433350c63 100644
+index c36258b617d..39680ff0ecc 100644
 --- a/sys/kern/kern_cheri_revoke.c
 +++ b/sys/kern/kern_cheri_revoke.c
-@@ -60,6 +60,8 @@
+@@ -3,6 +3,10 @@
+  *
+  * Copyright (c) 2019 Nathaniel Filardo
+  * Copyright (c) 2020-2022 Microsoft Corp.
++ * 
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
+  *
+  * This software was developed by SRI International and the University of
+  * Cambridge Computer Laboratory (Department of Computer Science and
+@@ -60,6 +64,8 @@
  #include <vm/vm_cheri_revoke.h>
  #include <sys/syscallsubr.h>
  
@@ -3364,7 +3442,7 @@ index c36258b617d5..86d433350c63 100644
  /*
   * We reserve the FEATURE(cheri_revoke) and VM SYSCTL() namespace cheri_revoke
   * for the real implementation.
-@@ -538,6 +540,8 @@ kern_cheri_revoke(struct thread *td, int flags,
+@@ -538,6 +544,8 @@ kern_cheri_revoke(struct thread *td, int flags,
  			    crstp, &crepochs));
  		}
  
@@ -3373,7 +3451,7 @@ index c36258b617d5..86d433350c63 100644
  		/*
  		 * Don't bump the epoch count here, just the state!  Wait
  		 * until we're certain it's actually open, which we can only
-@@ -552,6 +556,18 @@ kern_cheri_revoke(struct thread *td, int flags,
+@@ -552,6 +560,18 @@ kern_cheri_revoke(struct thread *td, int flags,
  	}
  	vm_map_unlock(vmm);
  
@@ -3392,7 +3470,7 @@ index c36258b617d5..86d433350c63 100644
  	/*
  	 * I am the revoker; expose an incremented epoch to userland
  	 * for its enqueue side.  Use a store fence to ensure that this
-@@ -569,6 +585,7 @@ kern_cheri_revoke(struct thread *td, int flags,
+@@ -569,6 +589,7 @@ kern_cheri_revoke(struct thread *td, int flags,
  	vm_cheri_revoke_publish_epochs(info_page, &crepochs);
  	wmb();
  
@@ -3400,7 +3478,7 @@ index c36258b617d5..86d433350c63 100644
  	/*
  	 * If we've already begun the load-side work and are now just going
  	 * to close it out, there's no need to do any thread singling, so
-@@ -778,6 +795,7 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
+@@ -778,6 +799,7 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
  
  	switch (sel) {
  	case CHERI_REVOKE_SHADOW_NOVMEM:
@@ -3408,7 +3486,7 @@ index c36258b617d5..86d433350c63 100644
  
  		if (cheri_gettag(arena) == 0)
  			return (EINVAL);
-@@ -797,6 +815,7 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
+@@ -797,6 +819,7 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
  
  	case CHERI_REVOKE_SHADOW_OTYPE:
  	    {
@@ -3416,7 +3494,7 @@ index c36258b617d5..86d433350c63 100644
  		int reqperms;
  
  		if (cheri_gettag(arena) == 0)
-@@ -818,13 +837,39 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
+@@ -818,13 +841,39 @@ kern_cheri_revoke_get_shadow(struct thread *td, int flags,
  		break;
  	    }
  	case CHERI_REVOKE_SHADOW_INFO_STRUCT:
@@ -3459,10 +3537,21 @@ index c36258b617d5..86d433350c63 100644
  		return (EINVAL);
  	}
 diff --git a/sys/kern/kern_exec.c b/sys/kern/kern_exec.c
-index 8deeb6a71dc5..8ebd29f64b83 100644
+index 8deeb6a71dc..62fd6d9e111 100644
 --- a/sys/kern/kern_exec.c
 +++ b/sys/kern/kern_exec.c
-@@ -83,6 +83,7 @@
+@@ -3,6 +3,10 @@
+  *
+  * Copyright (c) 1993, David Greenman
+  * All rights reserved.
++ * 
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
+  *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+@@ -83,6 +87,7 @@
  #include <vm/vm_map.h>
  #ifdef CHERI_CAPREVOKE
  #include <vm/vm_cheri_revoke.h>
@@ -3470,7 +3559,7 @@ index 8deeb6a71dc5..8ebd29f64b83 100644
  #endif
  #include <vm/vm_kern.h>
  #include <vm/vm_extern.h>
-@@ -359,7 +360,6 @@ int
+@@ -359,7 +364,6 @@ int
  kern_execve(struct thread *td, struct image_args *args,
      void * __capability mac_p, struct vmspace *oldvmspace)
  {
@@ -3478,7 +3567,24 @@ index 8deeb6a71dc5..8ebd29f64b83 100644
  	TSEXEC(td->td_proc->p_pid, args->begin_argv);
  	AUDIT_ARG_ARGV(args->begin_argv, args->argc,
  	    exec_args_get_begin_envv(args) - args->begin_argv);
-@@ -1358,7 +1358,7 @@ exec_map_stack(struct image_params *imgp)
+@@ -1186,6 +1190,16 @@ exec_new_vmspace(struct image_params *imgp, struct sysentvec *sv)
+ 		    MAP_ASLR_IGNSTART | MAP_ASLR_STACK | MAP_WXORX);
+ 		vm_map_unlock(map);
+ 	} else {
++#ifdef CHERI_CAPREVOKE
++		/*
++		 * Unmap the persistent sealing bitmap copy before vmspace_exec
++		 * replaces the address space; otherwise the mapping is leaked.
++		 * Reset the field so the reuse path in
++		 * vm_cheri_revoke_sealing_bitmap_copy does not follow a stale
++		 * address into the new address space.
++		 */
++		cc_dealloc_sealing_bitmap(p);
++#endif
+ 		error = vmspace_exec(p, sv_minuser, sv->sv_maxuser);
+ 		if (error)
+ 			return (error);
+@@ -1358,7 +1372,7 @@ exec_map_stack(struct image_params *imgp)
  	 * see a per-sv hook here.
  	 */
  	if (sv->sv_flags & SV_CHERI) {
@@ -3488,7 +3594,7 @@ index 8deeb6a71dc5..8ebd29f64b83 100644
  		if (error != KERN_SUCCESS)
  			return (vm_mmap_to_errno(error));
 diff --git a/sys/kern/kern_exit.c b/sys/kern/kern_exit.c
-index dc083c5817c1..4a4637aa5b14 100644
+index dc083c5817c..b22aaff6573 100644
 --- a/sys/kern/kern_exit.c
 +++ b/sys/kern/kern_exit.c
 @@ -93,6 +93,10 @@
@@ -3502,7 +3608,22 @@ index dc083c5817c1..4a4637aa5b14 100644
  SDT_PROVIDER_DECLARE(proc);
  SDT_PROBE_DEFINE1(proc, , , exit, "int");
  
-@@ -485,7 +489,6 @@ exit1(struct thread *td, int rval, int signo)
+@@ -417,6 +421,14 @@ exit1(struct thread *td, int rval, int signo)
+ 	}
+ 
+ 	exec_free_abi_mappings(p);
++#ifdef CHERI_CAPREVOKE
++	/*
++	 * Unmap the persistent sealing bitmap copy before tearing down the
++	 * address space, so the vm_object is released and the mapping is not
++	 * leaked on process exit.
++	 */
++	cc_dealloc_sealing_bitmap(p);
++#endif
+ 	vmspace_exit(td);
+ 	(void)acct_process(td);
+ 
+@@ -485,7 +497,6 @@ exit1(struct thread *td, int rval, int signo)
  	 * revoke control tty if exiting process was a session leader.
  	 */
  	killjobc();
@@ -3511,7 +3632,7 @@ index dc083c5817c1..4a4637aa5b14 100644
  	 * Reparent all children processes:
  	 * - traced ones to the original parent (or init if we are that parent)
 diff --git a/sys/kern/kern_fork.c b/sys/kern/kern_fork.c
-index dcdf27727b13..4d4ed9f91713 100644
+index dcdf27727b1..4d4ed9f9171 100644
 --- a/sys/kern/kern_fork.c
 +++ b/sys/kern/kern_fork.c
 @@ -82,6 +82,11 @@
@@ -3536,7 +3657,7 @@ index dcdf27727b13..4d4ed9f91713 100644
  	struct ucred *cred;
  	struct file *fp_procdesc;
 diff --git a/sys/kern/subr_unit.c b/sys/kern/subr_unit.c
-index 9551a51e2e85..b7af031fd4e0 100644
+index 9551a51e2e8..b7af031fd4e 100644
 --- a/sys/kern/subr_unit.c
 +++ b/sys/kern/subr_unit.c
 @@ -351,7 +351,7 @@ free_iter_unr(void *handle)
@@ -3567,10 +3688,21 @@ index 9551a51e2e85..b7af031fd4e0 100644
  
  #endif
 diff --git a/sys/riscv/include/cherireg.h b/sys/riscv/include/cherireg.h
-index a8435becc5f9..7f81452afdc2 100644
+index a8435becc5f..2c949ef3421 100644
 --- a/sys/riscv/include/cherireg.h
 +++ b/sys/riscv/include/cherireg.h
-@@ -66,16 +66,12 @@
+@@ -16,6 +16,10 @@
+  * HR0011-18-C-0016 ("ECATS"), as part of the DARPA SSITH research
+  * programme.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -66,16 +70,12 @@
  /* User-defined permission bits. */
  #define	CHERI_PERM_SW0			(1 << 15)	/* 0x00008000 */
  #define	CHERI_PERM_SW1			(1 << 16)	/* 0x00010000 */
@@ -3588,7 +3720,7 @@ index a8435becc5f9..7f81452afdc2 100644
  
  #define	CHERI_PERMS_HWALL						\
  	(CHERI_PERM_GLOBAL | CHERI_PERM_EXECUTE |			\
-@@ -170,11 +166,12 @@
+@@ -170,11 +170,12 @@
   * User and kernel software should be written so as to not place assumptions
   * about the specific values used here, as they may change.
   */
@@ -3607,7 +3739,7 @@ index a8435becc5f9..7f81452afdc2 100644
  #define	CHERI_OTYPE_ISKERN(x)	(((x) & CHERI_OTYPE_KERN_FLAG) != 0)
  #define	CHERI_OTYPE_ISUSER(x)	(!(CHERI_OTYPE_ISKERN(x)))
 diff --git a/sys/riscv/include/encoding.h b/sys/riscv/include/encoding.h
-index c9ef8a985dfd..550d00b2bc5f 100644
+index c9ef8a985df..550d00b2bc5 100644
 --- a/sys/riscv/include/encoding.h
 +++ b/sys/riscv/include/encoding.h
 @@ -740,6 +740,7 @@
@@ -3629,7 +3761,7 @@ index c9ef8a985dfd..550d00b2bc5f 100644
  #ifdef DECLARE_CAUSE
  DECLARE_CAUSE("misaligned fetch", CAUSE_MISALIGNED_FETCH)
 diff --git a/sys/riscv/include/frame.h b/sys/riscv/include/frame.h
-index b7a88e01e38a..ac2ae10df860 100644
+index b7a88e01e38..ac2ae10df86 100644
 --- a/sys/riscv/include/frame.h
 +++ b/sys/riscv/include/frame.h
 @@ -67,6 +67,8 @@ struct trapframe {
@@ -3642,7 +3774,7 @@ index b7a88e01e38a..ac2ae10df860 100644
  
  #ifdef _KERNEL
 diff --git a/sys/riscv/include/pcb.h b/sys/riscv/include/pcb.h
-index 3b5bca1e5c36..ee379c7dcb8b 100644
+index 3b5bca1e5c3..ee379c7dcb8 100644
 --- a/sys/riscv/include/pcb.h
 +++ b/sys/riscv/include/pcb.h
 @@ -53,6 +53,7 @@ struct pcb {
@@ -3654,10 +3786,21 @@ index 3b5bca1e5c36..ee379c7dcb8b 100644
  	uint64_t	pcb_fcsr;	/* Floating point control reg */
  	uint64_t	pcb_fpflags;	/* Floating point flags */
 diff --git a/sys/riscv/include/reg.h b/sys/riscv/include/reg.h
-index 5883e24c51d2..878a19a92ad0 100644
+index 5883e24c51d..350fb31d34b 100644
 --- a/sys/riscv/include/reg.h
 +++ b/sys/riscv/include/reg.h
-@@ -47,6 +47,7 @@ struct reg {
+@@ -10,6 +10,10 @@
+  * Computer Laboratory as part of the CTSRD Project, with support from the
+  * UK Higher Education Innovation Fund (HEIF).
+  *
++ *  Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -47,6 +51,7 @@ struct reg {
  	__uint64_t	a[8];		/* function arguments */
  	__uint64_t	sepc;		/* exception program counter */
  	__uint64_t	sstatus;	/* status register */
@@ -3665,7 +3808,7 @@ index 5883e24c51d2..878a19a92ad0 100644
  };
  
  struct fpreg {
-@@ -71,6 +72,8 @@ struct capreg {
+@@ -71,6 +76,8 @@ struct capreg {
  	__uintcap_t ddc;
  	__uint64_t tagmask;
  	__uint64_t pad;
@@ -3675,10 +3818,21 @@ index 5883e24c51d2..878a19a92ad0 100644
  #endif
  
 diff --git a/sys/riscv/riscv/cheri_revoke_machdep.c b/sys/riscv/riscv/cheri_revoke_machdep.c
-index b9cac80062b3..61d4ff0fa318 100644
+index b9cac80062b..01a735dbb3a 100644
 --- a/sys/riscv/riscv/cheri_revoke_machdep.c
 +++ b/sys/riscv/riscv/cheri_revoke_machdep.c
-@@ -89,14 +89,12 @@ vm_cheri_revoke_tlb_fault(void)
+@@ -8,6 +8,10 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -89,14 +93,12 @@ vm_cheri_revoke_tlb_fault(void)
   */
  
  static int
@@ -3694,7 +3848,7 @@ index b9cac80062b3..61d4ff0fa318 100644
  	if (perms == 0) {
  		/* For revoked or permissionless caps, do nothing. */
  
-@@ -108,7 +106,7 @@ vm_do_cheri_revoke(int *res, const struct vm_cheri_revoke_cookie *crc,
+@@ -108,7 +110,7 @@ vm_do_cheri_revoke(int *res, const struct vm_cheri_revoke_cookie *crc,
  		 */
  
  		CHERI_REVOKE_STATS_BUMP(crst, caps_found_revoked);
@@ -3703,7 +3857,7 @@ index b9cac80062b3..61d4ff0fa318 100644
  		void * __capability cscratch;
  		int ok;
  
-@@ -255,8 +253,7 @@ SYSINIT(
+@@ -255,8 +257,7 @@ SYSINIT(
  
  static inline int
  vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
@@ -3713,7 +3867,7 @@ index b9cac80062b3..61d4ff0fa318 100644
  	uintcap_t * __capability, uintcap_t, vm_offset_t, vm_offset_t),
      uintcap_t * __capability mvu, vm_offset_t mve)
  {
-@@ -274,7 +271,6 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+@@ -274,7 +275,6 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
  
  	/* Load once up front, which is almost as good as const */
  	vm_cheri_revoke_test_fn ctp = crc->map->vm_cheri_revoke_test;
@@ -3721,7 +3875,7 @@ index b9cac80062b3..61d4ff0fa318 100644
  #ifdef CHERI_CAPREVOKE_CLOADTAGS
  	uint8_t _cloadtags_stride = cloadtags_stride;
  	uint64_t tags, nexttags;
-@@ -311,7 +307,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+@@ -311,7 +311,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
  			if (!(tags & 1))
  				continue;
  
@@ -3730,7 +3884,7 @@ index b9cac80062b3..61d4ff0fa318 100644
  				goto out;
  		}
  
-@@ -326,7 +322,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+@@ -326,7 +326,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
  			if (!(tags & 1))
  				continue;
  
@@ -3739,7 +3893,7 @@ index b9cac80062b3..61d4ff0fa318 100644
  				goto out;
  		}
  	}
-@@ -338,7 +334,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
+@@ -338,7 +338,7 @@ vm_cheri_revoke_page_iter(const struct vm_cheri_revoke_cookie *crc,
  		uintcap_t cut = *mvu;
  
  		if (cheri_gettag(cut)) {
@@ -3748,7 +3902,7 @@ index b9cac80062b3..61d4ff0fa318 100644
  				goto out;
  		}
  	}
-@@ -371,8 +367,8 @@ vm_cheri_revoke_test(const struct vm_cheri_revoke_cookie *crc, uintcap_t cut)
+@@ -371,8 +371,8 @@ vm_cheri_revoke_test(const struct vm_cheri_revoke_cookie *crc, uintcap_t cut)
  		    (vm_pointer_t)vm_cheri_revoke_tlb_fault;
  		enable_user_memory_access();
  #endif
@@ -3759,7 +3913,7 @@ index b9cac80062b3..61d4ff0fa318 100644
  #ifdef CHERI_CAPREVOKE_FAST_COPYIN
  		disable_user_memory_access();
  		curthread->td_pcb->pcb_onfault = prev_onfault;
-@@ -426,8 +422,7 @@ vm_cheri_revoke_page_rw(const struct vm_cheri_revoke_cookie *crc, vm_page_t m)
+@@ -426,8 +426,7 @@ vm_cheri_revoke_page_rw(const struct vm_cheri_revoke_cookie *crc, vm_page_t m)
  
  static inline int
  vm_cheri_revoke_page_ro_adapt(int *res,
@@ -3769,7 +3923,7 @@ index b9cac80062b3..61d4ff0fa318 100644
      uintcap_t * __capability cutp __unused, uintcap_t cut, vm_offset_t start,
      vm_offset_t end)
  {
-@@ -437,7 +432,7 @@ vm_cheri_revoke_page_ro_adapt(int *res,
+@@ -437,7 +436,7 @@ vm_cheri_revoke_page_ro_adapt(int *res,
  
  	*res |= VM_CHERI_REVOKE_PAGE_HASCAPS;
  
@@ -3779,10 +3933,21 @@ index b9cac80062b3..61d4ff0fa318 100644
  
  		/* One dirty answer is as good as any other; stop eary */
 diff --git a/sys/riscv/riscv/cheri_revoke_machdep_tests.c b/sys/riscv/riscv/cheri_revoke_machdep_tests.c
-index cb9bf070c7b3..dc3183d296bc 100644
+index cb9bf070c7b..a0e3795a8e0 100644
 --- a/sys/riscv/riscv/cheri_revoke_machdep_tests.c
 +++ b/sys/riscv/riscv/cheri_revoke_machdep_tests.c
-@@ -43,79 +43,7 @@
+@@ -8,6 +8,10 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -43,79 +47,7 @@
  #include <vm/vm_param.h>
  #include <vm/vm_map.h>
  #include <vm/vm_cheri_revoke.h>
@@ -3863,7 +4028,7 @@ index cb9bf070c7b3..dc3183d296bc 100644
  
  static inline unsigned
  vm_cheri_revoke_test_range(vm_offset_t start, vm_offset_t end, uintcap_t cut)
-@@ -125,49 +53,37 @@ vm_cheri_revoke_test_range(vm_offset_t start, vm_offset_t end, uintcap_t cut)
+@@ -125,49 +57,37 @@ vm_cheri_revoke_test_range(vm_offset_t start, vm_offset_t end, uintcap_t cut)
  	return (va >= start && va < end);
  }
  
@@ -3938,7 +4103,7 @@ index cb9bf070c7b3..dc3183d296bc 100644
  	/*
  	 * Only check the capability if it has some memory permissions.
  	 */
-@@ -176,13 +92,15 @@ vm_cheri_revoke_test_mem_fine_range(const uint8_t * __capability crshadow,
+@@ -176,13 +96,15 @@ vm_cheri_revoke_test_mem_fine_range(const uint8_t * __capability crshadow,
  			return (1);
  
  		if ((perms & CHERI_PERM_SW_VMEM) == 0) {
@@ -3955,7 +4120,7 @@ index cb9bf070c7b3..dc3183d296bc 100644
  void
  vm_cheri_revoke_set_test(vm_map_t map, int flags)
  {
-@@ -191,7 +109,7 @@ vm_cheri_revoke_set_test(vm_map_t map, int flags)
+@@ -191,7 +113,7 @@ vm_cheri_revoke_set_test(vm_map_t map, int flags)
  	    VM_CHERI_REVOKE_CF_NO_OTYPES |
  	    VM_CHERI_REVOKE_CF_NO_CIDS:
  
@@ -3964,7 +4129,7 @@ index cb9bf070c7b3..dc3183d296bc 100644
  		break;
  
  	case VM_CHERI_REVOKE_CF_NO_COARSE_MEM |
-@@ -199,14 +117,14 @@ vm_cheri_revoke_set_test(vm_map_t map, int flags)
+@@ -199,14 +121,14 @@ vm_cheri_revoke_set_test(vm_map_t map, int flags)
  	    VM_CHERI_REVOKE_CF_NO_CIDS |
  	    VM_CHERI_REVOKE_CF_NO_REV_ENTRY:
  
@@ -3982,10 +4147,21 @@ index cb9bf070c7b3..dc3183d296bc 100644
  
  	default:
 diff --git a/sys/riscv/riscv/elf_machdep.c b/sys/riscv/riscv/elf_machdep.c
-index 12b880f66def..46486ef9aa25 100644
+index 12b880f66de..5659134c578 100644
 --- a/sys/riscv/riscv/elf_machdep.c
 +++ b/sys/riscv/riscv/elf_machdep.c
-@@ -59,6 +59,7 @@
+@@ -12,6 +12,10 @@
+  * Computer Laboratory as part of the CTSRD Project, with support from the
+  * UK Higher Education Innovation Fund (HEIF).
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -59,6 +63,7 @@
  #ifdef CHERI_CAPREVOKE
  #include <cheri/revoke.h>
  #include <vm/vm_cheri_revoke.h>
@@ -3993,7 +4169,7 @@ index 12b880f66def..46486ef9aa25 100644
  #endif
  
  #include "linker_if.h"
-@@ -158,51 +159,17 @@ elf64_register_sysvec(void *arg)
+@@ -158,51 +163,17 @@ elf64_register_sysvec(void *arg)
  	}
  
  #ifdef CHERI_CAPREVOKE
@@ -4054,7 +4230,7 @@ index 12b880f66def..46486ef9aa25 100644
  
  }
 diff --git a/sys/riscv/riscv/exception.S b/sys/riscv/riscv/exception.S
-index d87a6d3e5920..ddfc3303f989 100644
+index d87a6d3e592..ddfc3303f98 100644
 --- a/sys/riscv/riscv/exception.S
 +++ b/sys/riscv/riscv/exception.S
 @@ -206,6 +206,11 @@
@@ -4085,7 +4261,7 @@ index d87a6d3e5920..ddfc3303f989 100644
  
  	clc	ct0, (TF_T + 0 * 16)(csp)
 diff --git a/sys/riscv/riscv/genassym.c b/sys/riscv/riscv/genassym.c
-index 6164719194b4..e5365b46452e 100644
+index 6164719194b..e5365b46452 100644
 --- a/sys/riscv/riscv/genassym.c
 +++ b/sys/riscv/riscv/genassym.c
 @@ -72,6 +72,9 @@ ASSYM(PCB_S, offsetof(struct pcb, pcb_s));
@@ -4108,7 +4284,7 @@ index 6164719194b4..e5365b46452e 100644
  #if __has_feature(capabilities) && !defined(__CHERI_PURE_CAPABILITY__)
  ASSYM(KF_DDC, offsetof(struct kernframe, kf_ddc));
 diff --git a/sys/riscv/riscv/swtch.S b/sys/riscv/riscv/swtch.S
-index fcd4f79d7e7b..8aaca1326e05 100644
+index fcd4f79d7e7..8aaca1326e0 100644
 --- a/sys/riscv/riscv/swtch.S
 +++ b/sys/riscv/riscv/swtch.S
 @@ -319,6 +319,11 @@ ENTRY(cpu_throw)
@@ -4183,10 +4359,21 @@ index fcd4f79d7e7b..8aaca1326e05 100644
  	/* Store ra, sp and the callee-saved registers */
  	sd	ra, (PCB_RA)(a0)
 diff --git a/sys/riscv/riscv/trap.c b/sys/riscv/riscv/trap.c
-index 46da39fa7eff..7e00e2aabdf6 100644
+index 46da39fa7ef..7b9f4a04339 100644
 --- a/sys/riscv/riscv/trap.c
 +++ b/sys/riscv/riscv/trap.c
-@@ -63,6 +63,7 @@
+@@ -10,6 +10,10 @@
+  * Computer Laboratory as part of the CTSRD Project, with support from the
+  * UK Higher Education Innovation Fund (HEIF).
+  *
++ *  Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -63,6 +67,7 @@
  #include <cheri/cheric.h>
  #ifdef CHERI_CAPREVOKE
  #include <vm/vm_cheri_revoke.h>
@@ -4194,7 +4381,7 @@ index 46da39fa7eff..7e00e2aabdf6 100644
  #endif
  #endif
  
-@@ -374,12 +375,21 @@ page_fault_handler(struct trapframe *frame, int usermode)
+@@ -374,12 +379,21 @@ page_fault_handler(struct trapframe *frame, int usermode)
  		if (stval >= VM_MIN_KERNEL_ADDRESS) {
  			map = kernel_map;
  		} else {
@@ -4218,7 +4405,7 @@ index 46da39fa7eff..7e00e2aabdf6 100644
  	va = trunc_page(stval);
  
  #ifdef CHERI_CAPREVOKE
-@@ -415,8 +425,9 @@ page_fault_handler(struct trapframe *frame, int usermode)
+@@ -415,8 +429,9 @@ page_fault_handler(struct trapframe *frame, int usermode)
  		ftype = VM_PROT_READ;
  	}
  
@@ -4230,7 +4417,7 @@ index 46da39fa7eff..7e00e2aabdf6 100644
  #ifdef CHERI_CAPREVOKE
  skip_pmap:
 diff --git a/sys/riscv/riscv/uio_machdep.c b/sys/riscv/riscv/uio_machdep.c
-index d59b08afcea0..0d4add758a95 100644
+index d59b08afcea..0d4add758a9 100644
 --- a/sys/riscv/riscv/uio_machdep.c
 +++ b/sys/riscv/riscv/uio_machdep.c
 @@ -142,6 +142,7 @@ uiomove_fromphys(vm_page_t ma[], vm_offset_t offset, int n, struct uio *uio)
@@ -4242,10 +4429,31 @@ index d59b08afcea0..0d4add758a95 100644
  		uio->uio_resid -= cnt;
  		uio->uio_offset += cnt;
 diff --git a/sys/sys/proc.h b/sys/sys/proc.h
-index 914f030cd95b..8e024e3918b9 100644
+index 914f030cd95..6fe6c48b0c9 100644
 --- a/sys/sys/proc.h
 +++ b/sys/sys/proc.h
-@@ -749,6 +749,7 @@ struct proc {
+@@ -9,6 +9,10 @@
+  * Co. or Unix System Laboratories, Inc. and are reproduced herein with
+  * the permission of UNIX System Laboratories, Inc.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -724,6 +728,9 @@ struct proc {
+ 	int		p_pendingexits; /* (c) Count of pending thread exits. */
+ 	struct filemon	*p_filemon;	/* (c) filemon-specific data. */
+ 	int		p_pdeathsig;	/* (c) Signal from parent on exit. */
++#ifdef CHERI_CAPREVOKE
++	uint64_t	cheri_cc_sealing_base_copy; /* (c) Persistent sealing bitmap copy mapping address. */
++#endif
+ /* End area that is zeroed on creation. */
+ #define	p_endzero	p_magic
+ 
+@@ -749,6 +756,7 @@ struct proc {
  	vm_offset_t	p_psstrings;
  #if __has_feature(capabilities)
  	struct cheri_c18n_info	*p_c18n_info;	/* (x) Compartment info block */
@@ -4253,22 +4461,30 @@ index 914f030cd95b..8e024e3918b9 100644
  #endif
  /* End area that is copied on creation. */
  #define	p_endcopy	p_xexit
-@@ -783,6 +784,10 @@ struct proc {
+@@ -783,6 +791,7 @@ struct proc {
  
  	TAILQ_HEAD(, kq_timer_cb_data)	p_kqtim_stop;	/* (c) */
  	LIST_ENTRY(proc) p_jaillist;	/* (d) Jail process linkage. */
-+#ifdef CHERI_CAPREVOKE
-+	uint64_t cheri_cc_sealing_base_copy;
-+#endif
 +
  };
  
  #define	p_session	p_pgrp->pg_session
 diff --git a/sys/sys/sysent.h b/sys/sys/sysent.h
-index 63be29543f07..f4444ba21ade 100644
+index 63be29543f0..12dadb5bf87 100644
 --- a/sys/sys/sysent.h
 +++ b/sys/sys/sysent.h
-@@ -125,6 +125,8 @@ struct sysentvec {
+@@ -4,6 +4,10 @@
+  * Copyright (c) 1982, 1988, 1991 The Regents of the University of California.
+  * All rights reserved.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -125,6 +129,8 @@ struct sysentvec {
  	vm_offset_t	sv_cheri_revoke_shadow_base;
  	vm_offset_t	sv_cheri_revoke_shadow_offset;
  	vm_offset_t	sv_cheri_revoke_shadow_length;
@@ -4279,11 +4495,12 @@ index 63be29543f07..f4444ba21ade 100644
  	size_t		sv_psstringssz;	/* PS_STRINGS size */
 diff --git a/sys/vm/cc_revoke.c b/sys/vm/cc_revoke.c
 new file mode 100644
-index 000000000000..7a043f773cef
+index 00000000000..236be276035
 --- /dev/null
 +++ b/sys/vm/cc_revoke.c
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,149 @@
 +#include <sys/sysent.h>
++#include <sys/proc.h>
 +#include <vm/cc_revoke.h>
 +#include <vm/vm_cheri_revoke.h>
 +#include <vm/vm.h>
@@ -4295,6 +4512,34 @@ index 000000000000..7a043f773cef
 +#include <vm/vm_extern.h>
 +#include <vm/vm_page.h>
 +
++ /*
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ */
++
++
++/*
++ * Unmap the persistent sealing bitmap copy mapping for a process.
++ * Called on exec (after vmspace_exec replaces the address space) and on exit,
++ * so the per-process mapping allocated by vm_cheri_revoke_sealing_bitmap_copy
++ * is not leaked.  Must be called before the vmspace is torn down.
++ */
++void
++cc_dealloc_sealing_bitmap(struct proc *p)
++{
++	vm_map_t map;
++	vm_pointer_t addr;
++
++	if (p->cheri_cc_sealing_base_copy == 0)
++		return;
++
++	addr = p->cheri_cc_sealing_base_copy;
++	p->cheri_cc_sealing_base_copy = 0;
++
++	map = &p->p_vmspace->vm_map;
++	(void)vm_map_remove(map, addr, addr + SEALING_BITMAP_SIZE);
++}
 +
 +int vm_map_install_cc_sealing_bitmap(struct vm_map *map, struct sysentvec *sv)
 +{
@@ -4406,13 +4651,18 @@ index 000000000000..7a043f773cef
 \ No newline at end of file
 diff --git a/sys/vm/cc_revoke.h b/sys/vm/cc_revoke.h
 new file mode 100644
-index 000000000000..58a6eb160b1b
+index 00000000000..c8cba70970a
 --- /dev/null
 +++ b/sys/vm/cc_revoke.h
-@@ -0,0 +1,30 @@
+@@ -0,0 +1,35 @@
 +#ifndef	_CC_REVOKE_
 +#define	_CC_REVOKE_
-+
++/*
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
++ */
 +#if __has_feature(capabilities)
 +#include <cheri/cherireg.h> /* For CHERI_OTYPE_BITS */
 +#endif
@@ -4442,10 +4692,21 @@ index 000000000000..58a6eb160b1b
 +#endif
 \ No newline at end of file
 diff --git a/sys/vm/vm_cheri_revoke.c b/sys/vm/vm_cheri_revoke.c
-index 8686b6b8facf..2e820b70a084 100644
+index 8686b6b8fac..a979a67c2e3 100644
 --- a/sys/vm/vm_cheri_revoke.c
 +++ b/sys/vm/vm_cheri_revoke.c
-@@ -50,6 +50,8 @@
+@@ -3,6 +3,10 @@
+  *
+  * Copyright (c) 2019 Nathaniel Filardo
+  * Copyright (c) 2020-2022 Microsoft Corp.
++ * 
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
+  *
+  * This software was developed by SRI International and the University of
+  * Cambridge Computer Laboratory (Department of Computer Science and
+@@ -50,6 +54,8 @@
  #include <sys/sysctl.h>
  #include <sys/sysent.h>
  #include <sys/unistd.h>
@@ -4454,7 +4715,7 @@ index 8686b6b8facf..2e820b70a084 100644
  
  #include <vm/vm.h>
  #include <vm/vm_param.h>
-@@ -64,6 +66,7 @@
+@@ -64,6 +70,7 @@
  #include <cheri/revoke.h>
  #include <cheri/revoke_kern.h>
  #include <vm/vm_cheri_revoke.h>
@@ -4462,7 +4723,7 @@ index 8686b6b8facf..2e820b70a084 100644
  
  static void vm_cheri_revoke_pass_pre(vm_map_t);
  static void vm_cheri_revoke_pass_post(vm_map_t);
-@@ -131,7 +134,6 @@ vm_cheri_revoke_pass_async_pre(vm_map_t map, struct vm_cheri_revoke_cookie *crc)
+@@ -131,7 +138,6 @@ vm_cheri_revoke_pass_async_pre(vm_map_t map, struct vm_cheri_revoke_cookie *crc)
  
  	cheri_revoke_st_set(&map->vm_cheri_async_revoke_st, epoch + 1,
  	    CHERI_REVOKE_ST_INITED);
@@ -4470,7 +4731,7 @@ index 8686b6b8facf..2e820b70a084 100644
  }
  
  static void
-@@ -1197,6 +1199,112 @@ vm_cheri_assert_consistent_clg(struct vm_map *map)
+@@ -1197,6 +1203,120 @@ vm_cheri_assert_consistent_clg(struct vm_map *map)
  	}
  }
  
@@ -4555,12 +4816,20 @@ index 8686b6b8facf..2e820b70a084 100644
 +	for (int offset = 0; offset < SEALING_BITMAP_SIZE; offset += PAGE_SIZE) {
 +		ptraddr_t vaddr_old = sealing_bitmap_base + offset;
 +		ptraddr_t vaddr_new = addr + offset;
++		/*
++		 * Build page-scoped capabilities, not bitmap-scoped ones.
++		 * Using SEALING_BITMAP_SIZE here would make the capability on
++		 * the second+ iteration span base+offset to base+offset+256KB,
++		 * crossing a CHERI reservation boundary and triggering a panic
++		 * in _cheri_capability_build_user_rwx.  PAGE_SIZE is always
++		 * reservation-aligned.
++		 */
 +		void* __capability vaddr_old_cap = cheri_capability_build_user_data(
 +		    CHERI_PERM_LOAD | CHERI_PERM_STORE | CHERI_PERM_GLOBAL,
-+		    vaddr_old, SEALING_BITMAP_SIZE, 0);
++		    vaddr_old, PAGE_SIZE, 0);
 +		void* __capability vaddr_new_cap = cheri_capability_build_user_data(
 +		    CHERI_PERM_LOAD | CHERI_PERM_STORE | CHERI_PERM_GLOBAL,
-+		    vaddr_new, SEALING_BITMAP_SIZE, 0);
++		    vaddr_new, PAGE_SIZE, 0);
 +		void* kernel_buf = malloc(PAGE_SIZE, M_TEMP, M_WAITOK | M_ZERO);
 +		error = copyin(vaddr_old_cap, kernel_buf, PAGE_SIZE);
 +		if (error) {
@@ -4583,7 +4852,7 @@ index 8686b6b8facf..2e820b70a084 100644
  /*
   * XXX Should this encapsulate a barrier around epochs and stat collection and
   * all that?  I don't think there are any meaningful races around epoch close,
-@@ -1212,31 +1320,6 @@ vm_cheri_revoke_cookie_init(vm_map_t map, struct vm_cheri_revoke_cookie *crc)
+@@ -1212,31 +1332,6 @@ vm_cheri_revoke_cookie_init(vm_map_t map, struct vm_cheri_revoke_cookie *crc)
  		return (KERN_INVALID_ARGUMENT);
  
  	crc->map = map;
@@ -4616,10 +4885,21 @@ index 8686b6b8facf..2e820b70a084 100644
  }
  
 diff --git a/sys/vm/vm_cheri_revoke.h b/sys/vm/vm_cheri_revoke.h
-index 038e20767d4a..6c3fac1ea1ae 100644
+index 038e20767d4..f3995a6ad64 100644
 --- a/sys/vm/vm_cheri_revoke.h
 +++ b/sys/vm/vm_cheri_revoke.h
-@@ -87,13 +87,16 @@ cheri_revoke_cap(uintcap_t c)
+@@ -4,6 +4,10 @@
+  * Copyright (c) 2019 Nathaniel Filardo
+  * All rights reserved.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm, Merve Gulmez
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * This software was developed by SRI International and the University of
+  * Cambridge Computer Laboratory (Department of Computer Science and
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+@@ -87,13 +91,16 @@ cheri_revoke_cap(uintcap_t c)
  static const size_t VM_CHERI_REVOKE_GSZ_MEM_MAP = PAGE_SIZE;
  
  struct vm_cheri_revoke_cookie {
@@ -4638,7 +4918,7 @@ index 038e20767d4a..6c3fac1ea1ae 100644
      struct cheri_revoke_info_page * __capability *);
  
 diff --git a/sys/vm/vm_fault.c b/sys/vm/vm_fault.c
-index e78f977a22cf..7979b60bcb05 100644
+index e78f977a22c..7979b60bcb0 100644
 --- a/sys/vm/vm_fault.c
 +++ b/sys/vm/vm_fault.c
 @@ -100,6 +100,7 @@
@@ -4661,10 +4941,21 @@ index e78f977a22cf..7979b60bcb05 100644
  	 * Find the backing store object and offset into it to begin the
  	 * search.
 diff --git a/sys/vm/vm_map.h b/sys/vm/vm_map.h
-index 9a09599fec2b..c05ac832815f 100644
+index 9a09599fec2..2979861cbd3 100644
 --- a/sys/vm/vm_map.h
 +++ b/sys/vm/vm_map.h
-@@ -201,9 +201,8 @@ vm_map_entry_system_wired_count(vm_map_entry_t entry)
+@@ -7,6 +7,10 @@
+  * This code is derived from software contributed to Berkeley by
+  * The Mach Operating System project at Carnegie-Mellon University.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Ruben Sturm
++ *      Copyright (c) 2025 Ericsson AB 
++ *
+  * Redistribution and use in source and binary forms, with or without
+  * modification, are permitted provided that the following conditions
+  * are met:
+@@ -201,9 +205,8 @@ vm_map_entry_system_wired_count(vm_map_entry_t entry)
   *
   * Returns any nonzero value to indicate revocation required.
   */
@@ -4678,7 +4969,7 @@ index 9a09599fec2b..c05ac832815f 100644
  struct cheri_revoke_stats;
 diff --git a/tests_programs/ccc b/tests_programs/ccc
 new file mode 100755
-index 000000000000..3053ac448769
+index 00000000000..3053ac44876
 --- /dev/null
 +++ b/tests_programs/ccc
 @@ -0,0 +1,177 @@
@@ -4859,16 +5150,18 @@ index 000000000000..3053ac448769
 +done'
 +
 +run "$prog" "$@"
-diff --git a/tests_programs/context_switching b/tests_programs/context_switching
-new file mode 100755
-index 000000000000..698f1444ed86
-Binary files /dev/null and b/tests_programs/context_switching differ
 diff --git a/tests_programs/context_switching.c b/tests_programs/context_switching.c
 new file mode 100644
-index 000000000000..b88b481b353b
+index 00000000000..cb546c3f62f
 --- /dev/null
 +++ b/tests_programs/context_switching.c
-@@ -0,0 +1,19 @@
+@@ -0,0 +1,25 @@
++/*
++* Colored-Cap modifications: 
++*      Author: Ruben Sturm
++*      Copyright (c) 2025 Ericsson AB 
++*/
++
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <unistd.h>
@@ -4889,19 +5182,22 @@ index 000000000000..b88b481b353b
 +	printf("hello world: %d\n", cc_read());
 +}
 \ No newline at end of file
-diff --git a/tests_programs/initialised b/tests_programs/initialised
-new file mode 100644
-index 000000000000..e69de29bb2d1
 diff --git a/tests_programs/mass_unr_revoke b/tests_programs/mass_unr_revoke
 new file mode 100755
-index 000000000000..935bf104a140
+index 00000000000..935bf104a14
 Binary files /dev/null and b/tests_programs/mass_unr_revoke differ
 diff --git a/tests_programs/mass_unr_revoke.c b/tests_programs/mass_unr_revoke.c
 new file mode 100644
-index 000000000000..ce30fa97cac9
+index 00000000000..7bc852fd965
 --- /dev/null
 +++ b/tests_programs/mass_unr_revoke.c
-@@ -0,0 +1,13 @@
+@@ -0,0 +1,19 @@
++/*
++* Colored-Cap modifications: 
++*      Author: Ruben Sturm
++*      Copyright (c) 2025 Ericsson AB 
++*/
++
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <unistd.h>
@@ -4917,10 +5213,16 @@ index 000000000000..ce30fa97cac9
 +}
 diff --git a/tests_programs/microbench.c b/tests_programs/microbench.c
 new file mode 100644
-index 000000000000..0d673b5012cb
+index 00000000000..35087d241ee
 --- /dev/null
 +++ b/tests_programs/microbench.c
-@@ -0,0 +1,26 @@
+@@ -0,0 +1,32 @@
++/*
++* Colored-Cap modifications: 
++*      Author: Ruben Sturm
++*      Copyright (c) 2025 Ericsson AB 
++*/
++
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <unistd.h>
@@ -4950,10 +5252,17 @@ index 000000000000..0d673b5012cb
 \ No newline at end of file
 diff --git a/tests_programs/otype_test.c b/tests_programs/otype_test.c
 new file mode 100644
-index 000000000000..062345a480b7
+index 00000000000..841a741807a
 --- /dev/null
 +++ b/tests_programs/otype_test.c
-@@ -0,0 +1,29 @@
+@@ -0,0 +1,36 @@
++/*
++* Colored-Cap modifications: 
++*      Author: Ruben Sturm
++*      Copyright (c) 2025 Ericsson AB 
++*/
++
++
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <unistd.h>
@@ -4984,20 +5293,18 @@ index 000000000000..062345a480b7
 +  }
 +}
 \ No newline at end of file
-diff --git a/tests_programs/test_bitma b/tests_programs/test_bitma
-new file mode 100755
-index 000000000000..5c722259e936
-Binary files /dev/null and b/tests_programs/test_bitma differ
-diff --git a/tests_programs/test_bitmap b/tests_programs/test_bitmap
-new file mode 100755
-index 000000000000..ba6b3f5caf0b
-Binary files /dev/null and b/tests_programs/test_bitmap differ
 diff --git a/tests_programs/test_bitmap.c b/tests_programs/test_bitmap.c
 new file mode 100644
-index 000000000000..85d933f68aea
+index 00000000000..a4a1146ff91
 --- /dev/null
 +++ b/tests_programs/test_bitmap.c
-@@ -0,0 +1,54 @@
+@@ -0,0 +1,60 @@
++/*
++* Colored-Cap modifications: 
++*      Author: Ruben Sturm
++*      Copyright (c) 2025 Ericsson AB 
++*/
++
 +#include <stdio.h>
 +#include <stdlib.h>
 +#include <unistd.h>

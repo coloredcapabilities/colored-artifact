@@ -1,8 +1,20 @@
 diff --git a/CHERICC.bsv b/CHERICC.bsv
-index 5382f8f..fb993f7 100644
+index 5382f8f..8d65b0b 100644
 --- a/CHERICC.bsv
 +++ b/CHERICC.bsv
-@@ -141,7 +141,7 @@ endinstance
+@@ -6,6 +6,11 @@
+  * Cambridge Computer Laboratory (Department of Computer Science and
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
++ * 
++ *
++ * Colored-Cap modifications: 
++ *      Author: Hakan Englund, Merve Gulmez
++ *      Copyright (c) Ericsson AB 
+  *
+  * @BERI_LICENSE_HEADER_START@
+  *
+@@ -141,7 +146,7 @@ endinstance
  // CHERICC capability type
  ////////////////////////////////////////////////////////////////////////////////
  
@@ -11,7 +23,7 @@ index 5382f8f..fb993f7 100644
  `define AllPermsSz TAdd#(SizeOf#(`CCSoftPerms), SizeOf#(HardPerms))
  
  typedef struct {
-@@ -162,7 +162,6 @@ instance Bits#(CHERICCCap#(addr_, bounds_, e_, t_),
+@@ -162,7 +167,6 @@ instance Bits#(CHERICCCap#(addr_, bounds_, e_, t_),
      Bit#(1)                         isCap = pack(cap.isCap);
      Bit#(SizeOf#(`CCSoftPerms)) softperms = cap.softperms;
      Bit#(SizeOf#(HardPerms))    hardperms = pack(cap.hardperms);
@@ -19,7 +31,7 @@ index 5382f8f..fb993f7 100644
      Bit#(bounds_)                  bounds = pack(cap.bounds);
      Bit#(addr_)                      addr = cap.addr;
      return {isCap, softperms, hardperms, res, bounds, addr};
-@@ -290,15 +289,30 @@ instance CHERICap#(CHERICCCap#(addr_, bounds_, e_, t_), t_, addr_) provisos (
+@@ -290,15 +294,30 @@ instance CHERICap#(CHERICCCap#(addr_, bounds_, e_, t_), t_, addr_) provisos (
      return cap;
    endfunction
    //////////////////////////////////////////////////////////////////////////////
@@ -56,10 +68,21 @@ index 5382f8f..fb993f7 100644
    function setType(cap, otype);
      let new_cap = cap;
 diff --git a/CHERICC_Fat.bsv b/CHERICC_Fat.bsv
-index 2527c84..90d0696 100644
+index 2527c84..8b61428 100644
 --- a/CHERICC_Fat.bsv
 +++ b/CHERICC_Fat.bsv
-@@ -40,6 +40,7 @@ export CapPipe;
+@@ -8,6 +8,10 @@
+  * This software was developed by SRI International and the University of
+  * Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-10-C-0237
+  * ("CTSRD"), as part of the DARPA CRASH research programme.
++ 
++ * Colored-Cap modifications: 
++ *      Author: Hakan Englund, Merve Gulmez
++ *      Copyright (c) Ericsson AB 
+  *
+  * @BERI_LICENSE_HEADER_START@
+  *
+@@ -40,6 +44,7 @@ export CapPipe;
  export CapFat;
  export MW;
  export OTypeW;
@@ -67,7 +90,7 @@ index 2527c84..90d0696 100644
  export FlagsW;
  export Perms;
  export ResW;
-@@ -86,10 +87,11 @@ typedef `FLAGSW FlagsW;
+@@ -86,10 +91,11 @@ typedef `FLAGSW FlagsW;
  typedef 32 CapAddrW;
  typedef 64 CapW;
  `else // CAP128 is default
@@ -81,7 +104,7 @@ index 2527c84..90d0696 100644
  typedef `FLAGSW FlagsW;
  typedef 64  CapAddrW;
  typedef 128 CapW;
-@@ -114,6 +116,8 @@ typedef Bit#(CapAddrW)          CapAddr;
+@@ -114,6 +120,8 @@ typedef Bit#(CapAddrW)          CapAddr;
  typedef Bit#(TAdd#(CapAddrW,1)) CapAddrPlus1;
  typedef Bit#(TAdd#(CapAddrW,2)) CapAddrPlus2;
  // The Hardware permissions type
@@ -90,7 +113,7 @@ index 2527c84..90d0696 100644
  typedef struct {
    Bool permit_set_CID;
    Bool access_sys_regs;
-@@ -196,24 +200,44 @@ function Fmt showArchitectural(CapFat cap) =
+@@ -196,24 +204,44 @@ function Fmt showArchitectural(CapFat cap) =
    + $format(" length:0x%x", getLengthFat(cap, getTempFields(cap)));
  
  // "Microarchitectural FShow"
@@ -151,7 +174,7 @@ index 2527c84..90d0696 100644
  // default value for CatFat
  CapFat defaultCapFat = defaultValue;
  
-@@ -686,6 +710,9 @@ function CapFat unseal(CapFat cap, x _);
+@@ -686,6 +714,9 @@ function CapFat unseal(CapFat cap, x _);
    ret.otype = otype_unsealed;
    return ret;
  endfunction
@@ -161,7 +184,7 @@ index 2527c84..90d0696 100644
  function VnD#(CapFat) incOffsetFat( CapFat cap
                                    , CapAddr pointer
                                    , CapAddr offset // this is the increment in inc offset, and the offset in set offset
-@@ -1085,7 +1112,18 @@ instance CHERICap #(CapMem, OTypeW, FlagsW, CapAddrW, CapW, TSub #(MW, 3));
+@@ -1085,7 +1116,18 @@ instance CHERICap #(CapMem, OTypeW, FlagsW, CapAddrW, CapW, TSub #(MW, 3));
  
    // capability kind
    //////////////////////////////////////////////////////////////////////////////
@@ -180,7 +203,7 @@ index 2527c84..90d0696 100644
    function setKind = error ("setKind not implemented for CapMem");
    function validAsType (dummy, checkType);
      UInt #(CapAddrW) checkTypeUnsigned = unpack (checkType);
-@@ -1245,11 +1283,74 @@ instance CHERICap #(CapReg, OTypeW, FlagsW, CapAddrW, CapW, TSub #(MW, 3));
+@@ -1245,11 +1287,74 @@ instance CHERICap #(CapReg, OTypeW, FlagsW, CapAddrW, CapW, TSub #(MW, 3));
      cap.perms.soft = truncate (perms);
      return cap;
    endfunction
@@ -255,7 +278,7 @@ index 2527c84..90d0696 100644
    function getKind (cap) = case (cap.otype)
      otype_unsealed: UNSEALED;
      otype_sentry:   SENTRY;
-@@ -1257,13 +1358,27 @@ instance CHERICap #(CapReg, OTypeW, FlagsW, CapAddrW, CapW, TSub #(MW, 3));
+@@ -1257,13 +1362,27 @@ instance CHERICap #(CapReg, OTypeW, FlagsW, CapAddrW, CapW, TSub #(MW, 3));
      otype_res1:     RES1;
      default:        SEALED_WITH_TYPE (cap.otype);
    endcase;
@@ -283,7 +306,7 @@ index 2527c84..90d0696 100644
    function validAsType (dummy, checkType);
      CapMem nullC = nullCap;
      return validAsType (nullC, checkType);
-@@ -1360,10 +1475,24 @@ instance CHERICap #(CapPipe, OTypeW, FlagsW, CapAddrW, CapW, TSub#(MW, 3));
+@@ -1360,10 +1479,24 @@ instance CHERICap #(CapPipe, OTypeW, FlagsW, CapAddrW, CapW, TSub#(MW, 3));
      CapPipe { capFat: setSoftPerms(cap.capFat, perms)
              , tempFields: cap.tempFields };
    function getKind (cap) = getKind(cap.capFat);
@@ -310,10 +333,22 @@ index 2527c84..90d0696 100644
    function getAddr (cap) = getAddr (cap.capFat);
    function maskAddr (cap, mask) =
 diff --git a/CHERICap.bsv b/CHERICap.bsv
-index 2f6d5a4..d9cff49 100644
+index 2f6d5a4..7a18ef8 100644
 --- a/CHERICap.bsv
 +++ b/CHERICap.bsv
-@@ -36,6 +36,7 @@ package CHERICap;
+@@ -8,6 +8,11 @@
+  * Technology) under DARPA contract HR0011-18-C-0016 ("ECATS"), as part of the
+  * DARPA SSITH research programme.
+  *
++ *
++ * Colored-Cap modifications: 
++ *      Author: Hakan Englund, Merve Gulmez
++ *      Copyright (c) Ericsson AB 
++ *
+  * @BERI_LICENSE_HEADER_START@
+  *
+  * Licensed to BERI Open Systems C.I.C. (BERI) under one or more contributor
+@@ -36,6 +41,7 @@ package CHERICap;
  
  typedef Bit #(16) SoftPerms;
  
@@ -321,7 +356,7 @@ index 2f6d5a4..d9cff49 100644
  typedef struct {
    Bool permitSetCID;
    Bool accessSysRegs;
-@@ -69,6 +70,7 @@ endinstance
+@@ -69,6 +75,7 @@ endinstance
  
  typedef union tagged {
    void UNSEALED;
@@ -329,7 +364,7 @@ index 2f6d5a4..d9cff49 100644
    void SENTRY;
    void RES0;
    void RES1;
-@@ -195,9 +197,20 @@ typeclass CHERICap #( type capT              // type of the CHERICap capability
+@@ -195,9 +202,20 @@ typeclass CHERICap #( type capT              // type of the CHERICap capability
    //////////////////////////////////////////////////////////////////////////////
    // Manipulate the kind of the capability, i.e. whether it is sealed, sentry,
    // unsealed, ...
@@ -352,10 +387,21 @@ index 2f6d5a4..d9cff49 100644
    function capT setKind (capT cap, Kind #(otypeW) kind);
    // Check if a type is valid (requires a dummy proxy)
 diff --git a/CHERICapWrap.bsv b/CHERICapWrap.bsv
-index 0c5402a..2f61092 100644
+index 0c5402a..2de9379 100644
 --- a/CHERICapWrap.bsv
 +++ b/CHERICapWrap.bsv
-@@ -58,7 +58,11 @@ function Bit#(31) `W(getPerms) (`CAPTYPE cap) = getPerms(cap);
+@@ -6,6 +6,10 @@
+  * Cambridge Computer Laboratory under DARPA/AFRL contract FA8750-10-C-0237
+  * ("CTSRD"), as part of the DARPA CRASH research programme.
+  *
++ * Colored-Cap modifications: 
++ *      Author: Hakan Englund, Merve Gulmez
++ *      Copyright (c) Ericsson AB 
++ *
+  * @BERI_LICENSE_HEADER_START@
+  *
+  * Licensed to BERI Open Systems C.I.C. (BERI) under one or more contributor
+@@ -58,7 +62,11 @@ function Bit#(31) `W(getPerms) (`CAPTYPE cap) = getPerms(cap);
  (* noinline *)
  function `CAPTYPE `W(setPerms) (`CAPTYPE cap, Bit#(31) perms) = setPerms(cap, perms);
  (* noinline *)
