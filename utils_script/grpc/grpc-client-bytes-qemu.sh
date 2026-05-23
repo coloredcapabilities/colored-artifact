@@ -74,6 +74,7 @@ __start_qemu_server()
         > ${1}/server.log 2>&1 &
     SSH_PID=$!
     __wait_for_port 10000 60
+    sleep 15 
 }
 
 __stop_qemu_server()
