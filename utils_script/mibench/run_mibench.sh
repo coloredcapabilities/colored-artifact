@@ -35,9 +35,9 @@ run_benchmarks() {
     rm -rf "$logs_dir"
     mkdir -p "$logs_dir"
 
-    # Run make benchmarks with the specified simulator
-    # The Makefile's benchmarks target uses Run_benchmarks.py
-    make benchmarks LOGS_DIR="$logs_dir" SIM_EXE_FILE="$simulator" || true
+    # Run Run_benchmarks.py directly (the Makefile's benchmarks target
+    # ignores LOGS_DIR/SIM_EXE_FILE and always uses ./exe_HW_sim and ./Logs)
+    "${TOOOBA_ROOT}/Tests/Run_benchmarks.py" "$simulator" "${TOOOBA_ROOT}" "$logs_dir" || true
 
     # Extract results from logs using report_log.sh format
     echo "Extracting results..."
@@ -130,8 +130,13 @@ main() {
     echo "All benchmarks completed!"
     echo "========================================"
     echo ""
-    echo "To compare results, run:"
-    echo "  ./compare_benchmarks.sh"
+
+    if [[ $run_baseline -eq 1 && $run_picasso -eq 1 ]]; then
+        "${SCRIPT_DIR}/compare_benchmarks.sh" "$BASELINE_LOG" "$PICASSO_LOG"
+    else
+        echo "To compare results, run:"
+        echo "  ./compare_benchmarks.sh"
+    fi
 }
 
 main "$@"

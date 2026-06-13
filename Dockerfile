@@ -61,21 +61,19 @@ COPY --chown=$USERNAME:$USERNAME ./patches ./patches
 WORKDIR /home/$USERNAME/cheri
 RUN git clone https://github.com/CTSRD-CHERI/Toooba.git &&  cd Toooba && git checkout a8299cfc01896 && git submodule update --init --recursive
 ENV TOOOBA_ROOT=/home/$USERNAME/cheri/Toooba/
+RUN sed -i 's/if len (argv \[j:\]) != 0 and isdecimal (argv \[j\]):/if len (argv [j:]) != 0 and argv[j].isdecimal():/; s/if len(argv\[j:\]) != 0 and isdecimal (argv\[j\]):/if len(argv[j:]) != 0 and argv[j].isdecimal():/' ${TOOOBA_ROOT}/Tests/Run_benchmarks.py
 
 WORKDIR ${TOOOBA_ROOT}/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim
-RUN sed -i 's/Bool verbose = False;/Bool verbose = True;/' ../../src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
-RUN sed -i 's/Bool verbose = False;/Bool verbose = True;/' ../../src_Core/RISCY_OOO/procs/RV64G_OOO/AluExePipeline.bsv
-RUN make compile && make simulator 
+RUN make compile && make simulator
 RUN cp exe_HW_sim exe_HW_sim_baseline
 RUN cp exe_HW_sim.so exe_HW_sim_baseline.so
 ENV SIM_BASELINE=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim_baseline
 
 ### Let's build Toooba core for picasso
-RUN git checkout -- ../../src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
-RUN git checkout -- ../../src_Core/RISCY_OOO/procs/RV64G_OOO/AluExePipeline.bsv
 RUN cd ${TOOOBA_ROOT} &&  git apply  /home/$USERNAME/patches/toooba_colored.patch && cd ${TOOOBA_ROOT}/libs/cheri-cap-lib/ && git apply  /home/$USERNAME/patches/cheri-cap-lib_colored.patch
-RUN sed -i 's/Bool verbose = False;/Bool verbose = True;/' ../../src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
-RUN sed -i 's/Bool verbose = False;/Bool verbose = True;/' ../../src_Core/RISCY_OOO/procs/RV64G_OOO/AluExePipeline.bsv
+RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
+RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/lib/DTlb.bsv
+RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/lib/SplitLSQ.bsv
 RUN make compile && make simulator
 RUN make -C ${TOOOBA_ROOT}/Tests/elf_to_hex
 ENV SIM_PICASSO=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim
