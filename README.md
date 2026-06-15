@@ -28,7 +28,7 @@ and more consistent performance in long-running SQLite,
 PostgreSQL, and gRPC workloads compared to prior work.
 
 
-More Information
+## More Information
 
 - PICASSO: Scaling CHERI Use-After-Free Protection to Millions of Allocations using Colored Capabilities 
   https://arxiv.org/abs/2602.09131
@@ -43,79 +43,195 @@ More Information
   year = {2026},
   doi = {10.48550/ARXIV.2602.09131},
   howpublished = {{\tt arXiv:2602.09131 [cs.CR]}},
-  url = {https://arxiv.org/abs/2602.0913}
+  url = {https://arxiv.org/abs/2602.09131}
 }
 ```
 
-### Artifact
+## Artifact
 Our artifact can be evaluated at three levels:
 
 | Evaluation Level | Hardware Required | What It Reproduces |
 |------------------|-------------------|-------------------|
-| [Bluespec Simulator](./Bluespec_simulation.md) | None (Docker) | MiBench results (Table 1) |
-| [QEMU Emulation](./QEMU.md) | None | Security evaluation |
+| [Bluespec Simulator](./Bluespec_simulation.md) | None (Docker) | MiBench results (Table 1 in the extended version, Table 3 in the original paper) |
+| [QEMU Emulation](./QEMU.md) | None (Docker optional) | Security evaluation (Section 7.1) |
 | [FPGA](./FPGA.md) | Xilinx VCU118 | Performance results |
-
-We provide pre-built bitstreams and binaries under the [`prebuilt`](./prebuilt/) directory.
-If you prefer not to build everything manually, you can skip ahead to the relevant evaluation section.
 
 ---
 
-## Building for RISC-V 64-bit Purecap
+## Getting Started
 
-All benchmarks are cross-compiled for CheriBSD using the cheribuild system.
+### Docker (recommended — no toolchain installation needed)
 
-Set the artifact directory (this repository) so paths resolve correctly:
+Both the Bluespec and QEMU evaluation paths can run entirely inside Docker.
+Install Docker first if you don't have it:
 
 ```sh
-export ARTIFACT_DIR=~/cheri/Colored_Usenix
+./utils_script/docker_install.sh
+# If this is your first Docker install, log out and back in to activate the docker group.
+# Verify with: docker run --rm hello-world
 ```
 
+Then build the image for your chosen evaluation path:
+
+| Evaluation path | Command |
+|-----------------|---------|
+| Bluespec Simulator (MiBench) | `docker build --network=host -t picasso .` |
+| QEMU Emulation (Security evaluation) | `docker build --network=host -f Dockerfile.qemu -t picasso-qemu .` |
+
+The Bluespec image takes **1–2 hours** to build (two full Bluespec elaborations,
+~15 GB intermediate artifacts). The QEMU image is faster but still clones and
+patches several large repos — run it in advance.
+
+Once the image is built, proceed to [Bluespec_simulation.md](./Bluespec_simulation.md)
+or [QEMU.md](./QEMU.md) for evaluation instructions.
+
+### Native (host install)
+
+If you prefer to install the cheribuild toolchain dependencies directly on
+your host, follow the manual setup sections in [QEMU.md](./QEMU.md) or
+[FPGA.md](./FPGA.md).
+
+---
+
+## Environment Setup
+
+Set these variables once in your shell (host or Docker container) before
+running any commands in this README:
+
+```sh
+export ARTIFACT_DIR=~/cheri/Colored_Usenix   # path to this repo
+export CHERI_ROOT=~/cheri                      # cheribuild source/output root
+export CHERIBUILD=~/cheri/cheribuild           # cheribuild checkout
+export SSH_PORT=10222   # guest SSH port: 10222 for qemu_ssh_boot.py (Docker path),
+                        # or adjust if using cheribuild's run-riscv64-purecap directly
+```
+
+All benchmarks are cross-compiled for CheriBSD on the **host** (or inside the
+Docker container) using the cheribuild system. See [QEMU.md](./QEMU.md) or
+[FPGA.md](./FPGA.md) for instructions on getting the environment built and
+running before proceeding to the evaluation sections below.
 
 ---
 
 ## Security Evaluation
 
-The security evaluation can be run on either QEMU or FPGA.
+The security evaluation can be run on either QEMU (no hardware needed) or FPGA.
+
+**Prerequisites — choose one:**
+
+- **QEMU (recommended for artifact evaluation):** Follow [QEMU.md](./QEMU.md) to
+  build and boot CheriBSD under QEMU with SSH access. Docker is the quickest
+  path (`Dockerfile.qemu` sets up everything including a pre-baked SSH key).
+  QEMU must be running and reachable at `root@127.0.0.1 -p 10003` (cheribuild
+  default) or the port you configured before proceeding.
+
+- **FPGA:** Follow [FPGA.md](./FPGA.md) to flash the VCU118 and boot CheriBSD.
+  Use the pre-built bitstreams and kernels under [`prebuilt/`](./prebuilt/) to
+  skip the build. SSH must be reachable at the FPGA's IP address before
+  proceeding.
 
 ### Juliet Test Suite (CWE-415/416)
 
-Install and run the Juliet test suite:
+Run the following on the **host** (or inside the Docker container — not inside
+QEMU/FPGA). This cross-compiles all CWE-415/416 binaries for riscv64-purecap
+using the CHERI SDK:
 
 ```sh
-$ARTIFACT_DIR/utils_script/juliet_install.sh
+utils_script/juliet_install.sh
 ```
 
-Copy test binaries to the FPGA (see [FPGA.md](./FPGA.md) for scp instructions).
+This clones `juliet-test-suite-c` into `$CHERI_ROOT` (default `~/cheri`) and
+produces `$CHERI_ROOT/juliet-test-suite-c/bin/CWE415`,
+`$CHERI_ROOT/juliet-test-suite-c/bin/CWE416`, and
+`$CHERI_ROOT/juliet-test-suite-c/juliet-run.sh`.
 
-Inside the FPGA, run the tests:
+#### Running on QEMU
+
+With QEMU running and SSH reachable (see Prerequisites above), copy the
+binaries and runner script from the **host**:
 
 ```sh
-cd /tmp/juliet-test-suite/bin
-sh juliet-run.sh 415
-sh juliet-run.sh 416
+# Run on the host / Docker container
+ssh -p $SSH_PORT root@127.0.0.1 mkdir -p /root/juliet-bin
+scp -r -P $SSH_PORT \
+  $CHERI_ROOT/juliet-test-suite-c/bin/CWE415 \
+  $CHERI_ROOT/juliet-test-suite-c/bin/CWE416 \
+  $CHERI_ROOT/juliet-test-suite-c/juliet-run.sh \
+  root@127.0.0.1:/root/juliet-bin/
 ```
 
-**Expected results:**
-- **Double Free (CWE-415):** The program gracefully exits with exit code -1 (255).
-- **Use-After-Free (CWE-416):** You should see an In-address Space exception signal 34, resulting in exit code 162.
+`juliet-run.sh` feeds each test case's stdin from `/tmp/in.txt`. Create it on
+the guest before running (every test fails with exit code 2 if it is missing):
+
+```sh
+# Run on the host / Docker container
+ssh -p $SSH_PORT root@127.0.0.1 "printf '%0.sA' {1..366} > /tmp/in.txt"
+```
+
+Then run the tests **inside the guest** (a 1s per-testcase timeout is
+recommended — without it, test cases waiting on stdin can hang indefinitely):
+
+```sh
+# SSH into the guest first: ssh -p $SSH_PORT root@127.0.0.1
+cd /root/juliet-bin
+chmod +x juliet-run.sh
+sh juliet-run.sh 415 1s
+sh juliet-run.sh 416 1s
+```
+
+Results are appended to `CWE415/good.run`, `CWE415/bad.run`,
+`CWE416/good.run`, and `CWE416/bad.run` as `<testcase-path> <exit-code>`
+pairs.
+
+#### Running on FPGA
+
+Copy test binaries to the FPGA (see [FPGA.md](./FPGA.md) for scp instructions),
+then run as above from `/root/juliet-bin` (remember to create `/tmp/in.txt`
+first):
+
+```sh
+cd /root/juliet-bin
+sh juliet-run.sh 415 1s
+sh juliet-run.sh 416 1s
+```
+
+**Expected results** (per the `<TESTCASE_PATH> <exit-code>` lines in
+`*.run`):
+- **Double Free (CWE-415), `bad.run`:** Programs are expected to exit with
+  code 255 (PICASSO's Colored Capabilities revocation detecting the
+  double-free).
+- **Use-After-Free (CWE-416), `bad.run`:** Programs are expected to terminate
+  with signal 34 (SIGPROT, an in-address-space security exception), which
+  `sh`/`timeout` reports as exit code 128+34=162.
+- **`good.run` (both CWEs):** Programs are expected to exit with code 0
+  (occasional exit code 124 from the 1s `timeout` is harmless for test cases
+  that wait on additional input).
 
 ### Real-World CVE Validation
 
-We validate PICASSO against 11 real-world UAF/Double-Free CVEs from published benchmarks.
-See [`validation/README.md`](./validation/README.md) for full details.
+We validate PICASSO against 11 real-world UAF/Double-Free CVEs from published
+benchmarks. See [`validation/README.md`](./validation/README.md) for full
+details.
+
+Run the following on the **host** (or inside the Docker container — not inside
+QEMU/FPGA). Build and transfer all CVE PoCs to the running guest:
 
 ```sh
 cd $ARTIFACT_DIR/validation
 ./build_all.sh
-./transfer.sh root@127.0.0.1 -p 10003
+./transfer.sh root@127.0.0.1 -p $SSH_PORT
 ```
 
-Then run the tests from the host:
+Then run the tests from the **host**:
+
 ```sh
 cd $ARTIFACT_DIR/validation
-./run_all_remote.sh root@127.0.0.1 -p 10003
+./run_all_remote.sh root@127.0.0.1 -p $SSH_PORT
 ```
+
+**Expected results:** All 11 CVEs should be detected — each PoC triggers
+either signal 34 (SIGPROT, UAF detected) or exit code 255 (double-free
+detected). `run_all_remote.sh` prints a per-CVE pass/fail summary.
 
 The validated CVEs include BZip2 (CVE-2016-3189), libiberty (CVE-2016-4487),
 nasm (CVE-2017-10686, CVE-2019-8343), libzip (CVE-2019-17582),
@@ -137,31 +253,40 @@ cd $CHERIBUILD
 
 Replace `/path/to/cpu2006-1.2.iso` with the path to your SPEC CPU2006 ISO image.
 
-The output for the spec folder.. 
-$HOME_DIR/cheri/build/spec2006-riscv64-purecap-build
+The built SPEC folder is placed at:
+
+```
+$CHERI_ROOT/build/spec2006-riscv64-purecap-build
+```
 
 ### Running SPEC CPU2006 on FPGA
 
-After building, prepare the benchmark folder:
+**Prerequisite:** FPGA running CheriBSD with SSH reachable (see [FPGA.md](./FPGA.md)).
+
+After building, prepare the benchmark folder on the **host**:
 
 ```sh
-# Optional: Remove unnecessary files to reduce folder size
+# Optional: remove unnecessary files to reduce transfer size
 $ARTIFACT_DIR/utils_script/spec/spec_folder_reduce_folder.sh
 
-# Instrument all scripts with time and minimal_stats_counts
-$ARTIFACT_DIR/utils_script/spec/automate.py
+# Instrument all benchmark run scripts with timing/stat counters
+python3 $ARTIFACT_DIR/utils_script/spec/automate.py
 ```
 
-After copying the SPEC folder to the FPGA, run all benchmarks at once:
+Copy the SPEC folder to the FPGA (see [FPGA.md](./FPGA.md#how-to-transfer-file-to-fpga)
+for scp instructions), then run **inside the FPGA guest**:
 
 ```sh
-sh run_all_spec_fpga.sh /bench/SPEC/CINT2006
+# Inside the FPGA guest, from the directory where SPEC was copied
+cd /bench/SPEC/CINT2006
+sh $ARTIFACT_DIR/utils_script/spec/run_all_spec_fpga.sh /bench/SPEC/CINT2006
 ```
 
-Or run a single benchmark individually:
+Or run a single benchmark individually **inside the FPGA guest**:
 
 ```sh
-sh ./464.h264ref/464.h264ref.test.fpga.sh
+cd /bench/SPEC/CINT2006/464.h264ref
+sh ./464.h264ref.test.fpga.sh
 ```
 
 The benchmarks run are: 401.bzip2, 445.gobmk, 456.hmmer, 458.sjeng,
@@ -199,32 +324,29 @@ This produces:
 
 ## Pgbench
 
-Build PostgreSQL:
+**Prerequisite:** FPGA running CheriBSD with SSH reachable (see [FPGA.md](./FPGA.md)).
 
-Clone the repo manually under `$HOME/cheri/`:
+On the **host**, clone, patch, and cross-compile PostgreSQL:
 
 ```sh
+cd $CHERI_ROOT
 git clone https://github.com/CTSRD-CHERI/postgres.git
 cd postgres
-git apply patches/postgress.diff
-```
-
-Then build with cheribuild:
-
-```sh
+git apply $ARTIFACT_DIR/patches/postgress.diff
 cd $CHERIBUILD
 ./cheribuild.py postgres-riscv64-purecap -d
 ```
 
-Copy PostgreSQL to the FPGA (see [FPGA.md](./FPGA.md) for scp instructions).
+Copy PostgreSQL to the FPGA (see [FPGA.md](./FPGA.md#how-to-transfer-file-to-fpga)
+for scp instructions).
 
-On the FPGA, run the benchmark:
+**Inside the FPGA guest**, start the database and run the server-side benchmark:
 
 ```sh
-sh ./postgres-bench-stats.sh  # This will take a while to create the full database
+sh ./postgres-bench-stats.sh  # creates the database and runs pgbench — takes a while
 ```
 
-On the host, run the benchmark:
+**On the host**, run the client-side benchmark driver:
 
 ```sh
 sh $ARTIFACT_DIR/utils_script/postgress/pgbench-client.sh
@@ -234,21 +356,37 @@ sh $ARTIFACT_DIR/utils_script/postgress/pgbench-client.sh
 
 ## SQLite
 
+**Prerequisite:** FPGA running CheriBSD with SSH reachable (see [FPGA.md](./FPGA.md)).
+
+On the **host**, cross-compile SQLite:
+
 ```sh
 cd $CHERIBUILD
 ./cheribuild.py sqlite-riscv64-purecap -d
 ```
 
-On the FPGA, run the benchmark:
+Copy the `speedtest1` binary to the FPGA (see
+[FPGA.md](./FPGA.md#how-to-transfer-file-to-fpga) for scp instructions).
+
+**Inside the FPGA guest**, run the benchmark:
 
 ```sh
 sh ./speedtest1
+```
+
+The benchmark prints per-operation timing lines. Collect results for baseline,
+colored, and Cornucopia configurations and compare using:
+
+```sh
+python3 $ARTIFACT_DIR/utils_script/sqlite/analyze_sqlite.py
 ```
 ---
 
 ## gRPC
 
-Cross-compile all dependencies and gRPC:
+**Prerequisite:** QEMU or FPGA running CheriBSD with SSH reachable.
+
+On the **host**, cross-compile gRPC and all dependencies:
 
 ```sh
 cd $CHERIBUILD
@@ -256,7 +394,7 @@ cd $CHERIBUILD
 ./cheribuild.py grpc-riscv64-purecap -d
 ```
 
-If that does not work, manually build each dependency:
+If that does not work, build each dependency individually:
 
 ```sh
 cd $CHERIBUILD
@@ -269,26 +407,28 @@ cd $CHERIBUILD
 ./cheribuild.py grpc-riscv64-purecap
 ```
 
-Launch QEMU with port forwarding for the gRPC worker ports:
+The gRPC binaries are installed by cheribuild into the QEMU disk image at
+`/usr/local/riscv64-purecap/bin`. For FPGA, copy them to the board first (see
+[FPGA.md](./FPGA.md#how-to-transfer-file-to-fpga) for scp instructions).
+
+#### Running on QEMU
+
+Launch QEMU with extra port forwarding for the gRPC worker ports:
 
 ```sh
 cd $CHERIBUILD
 ./cheribuild.py run-riscv64-purecap --run-riscv64-purecap/extra-tcp-forwarding "10000=10000 10001=10001"
 ```
 
-By default, the gRPC binaries are installed inside QEMU at:
-
-```
-/usr/local/riscv64-purecap/bin
-```
-
-To run the gRPC benchmark on QEMU, run the following script on your host machine:
+Then run the benchmark driver **on the host**:
 
 ```sh
 $ARTIFACT_DIR/utils_script/grpc/grpc-client-bytes-qemu.sh
 ```
 
-To run the gRPC benchmark on FPGA, run the following script on your host machine:
+#### Running on FPGA
+
+Run the benchmark driver **on the host** (connects to the FPGA):
 
 ```sh
 $ARTIFACT_DIR/utils_script/grpc/grpc-client-bytes.sh

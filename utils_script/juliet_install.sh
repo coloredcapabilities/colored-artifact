@@ -7,7 +7,7 @@ PATCHES_DIR="$SCRIPT_DIR/patches"
 CHERI_ROOT=${CHERI_ROOT:-$HOME/cheri}
 cd $CHERI_ROOT
 
-git clone git@github.com:arichardson/juliet-test-suite-c.git
+git clone https://github.com/arichardson/juliet-test-suite-c.git
 
 cd juliet-test-suite-c
 git apply $PATCHES_DIR/juliet_colored.diff

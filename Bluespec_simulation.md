@@ -1,26 +1,13 @@
 
-# Simulation Test 
+# Bluespec Simulation (MiBench)
 
-To facilitate artifact evaluation, we provide instructions for running the experiments using our Docker images:
+**Prerequisite:** Docker installed and the `picasso` image built — see
+[README.md Getting Started](./README.md#getting-started) if you haven't done
+this yet (`docker build --network=host -t picasso .`).
 
-```bash
-./utils_script/docker_install.sh
-
-# Note: if this is the first installation of Docker, logout from the current shell
-#        and login again to enable the "docker" group in the current user
-```
-
-After installation, verify that Docker is working correctly by running:
-`docker run --rm hello-world` command succeeds. If you get a permission error, make sure [your user is in the "docker" group](https://docs.docker.com/engine/install/linux-postinstall/#manage-docker-as-a-non-root-user)
-
-
-Our Dockerfile automatically builds all dependencies, including clang, newlib,
-and the Bluespec simulation mode of the Toooba core, for both the PICASSO and
-baseline configurations. The image requires approximately 14 GB of disk space.
+Start the container:
 
 ```sh
-docker build --network=host  -t picasso .
-
 docker run -i -t picasso
 ```
 
@@ -32,36 +19,48 @@ After starting the Docker container, you can run the MiBench benchmark suite to 
 
 ```sh
 # Inside the Docker container
-cd /home/ubuntu/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim
-
-# Run benchmarks for baseline
-make benchmarks SIM=./exe_HW_sim_baseline
-# Results will be in Logs/*.bin.log
-
-# Run benchmarks for PICASSO (PICASSO)
-make benchmarks SIM=./exe_HW_sim
-```
-
-### Using the Benchmark Scripts
-
-We provide convenient scripts to run and compare benchmarks:
-
-```sh
-# Navigate to the artifact directory
 cd /home/ubuntu/bench
 
-# Run all MiBench benchmarks for both simulators
+# Run all MiBench benchmarks for both simulators and print the comparison
 ./run_mibench.sh
 ```
 
+> **Note:** Do not use `make benchmarks SIM=...` directly from
+> `/home/ubuntu/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim` — the
+> Makefile's `benchmarks` target ignores the `SIM=`/`SIM_EXE_FILE=`/`LOGS_DIR=`
+> variables and always runs `./exe_HW_sim` into `./Logs`, so it cannot be used
+> to compare the baseline and PICASSO binaries. `run_mibench.sh` instead runs
+> `Tests/Run_benchmarks.py` directly against each simulator with separate log
+> directories (`Logs_baseline`, `Logs_picasso`).
+
+`run_mibench.sh` accepts `--baseline-only` or `--picasso-only` to run a single
+configuration; in that case it skips the automatic comparison and prints a
+reminder to run `./compare_benchmarks.sh` once both logs are available.
+
 ### Comparing Results
 
-After running benchmarks, compare the results:
+When both the baseline and PICASSO runs complete, `run_mibench.sh`
+automatically invokes `compare_benchmarks.sh` and prints a per-benchmark
+cycle/instruction overhead table plus totals. You can re-run the comparison
+manually at any time:
 
 ```sh
 ./compare_benchmarks.sh
 ```
 
 This generates:
-- `bench_log/mibench_comparison.txt` 
-- `bench_log/mibench_comparison.tex` 
+- `bench_log/mibench_comparison.txt`
+- `bench_log/mibench_comparison.tex`
+
+### Expected Results
+
+Across the MiBench suite, PICASSO's colored capabilities should add only a
+small cycle-count overhead over the baseline (consistent with the paper's
+reported ~5% geometric-mean overhead on SPEC CPU2006); instruction counts
+should be identical or nearly identical between configurations, since the
+extra cycles come from pipeline/memory effects rather than additional
+instructions.
+
+A full run of all 15 benchmarks for both configurations can take a
+non-trivial amount of time (some benchmarks, e.g. `adpcm_decode` /
+`adpcm_encode`, may run considerably longer than the others).

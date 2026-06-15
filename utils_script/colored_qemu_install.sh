@@ -30,7 +30,7 @@ cd $CHERI_ROOT
 # Clone and patch CheriBSD
 git clone https://github.com/CTSRD-CHERI/cheribsd.git
 cd cheribsd
-git checkout 578ea4f7ef67d589f0ca7d10ec9e383333567421
+git checkout 485c1c8195563d2be65ed2eb1bf7d8bc06eb1a64
 git apply $PATCHES_DIR/cheribsd_colored.diff
 cd $CHERI_ROOT
 
