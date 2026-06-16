@@ -48,13 +48,20 @@ PostgreSQL, and gRPC workloads compared to prior work.
 ```
 
 ## Artifact
-Our artifact can be evaluated at three levels:
 
-| Evaluation Level | Hardware Required | What It Reproduces |
-|------------------|-------------------|-------------------|
-| [Bluespec Simulator](./Bluespec_simulation.md) | None (Docker) | MiBench results (Table 1 in the extended version, Table 3 in the original paper) |
-| [QEMU Emulation](./QEMU.md) | None (Docker optional) | Security evaluation (Section 7.1) |
-| [FPGA](./FPGA.md) | Xilinx VCU118 | Performance results |
+## Structure
+
+- [7.1 Security Evaluation](#71-security-evaluation) `[QEMU or FPGA]`
+  - [Juliet Test Suite (CWE-415/416)](#juliet-test-suite-cwe-415416): heap UAF/double-free detection
+  - [Real-World CVE Validation](#real-world-cve-validation): 11 CVEs across 9 libraries
+
+- [7.2 Performance Evaluations](#72-performance-evaluations) `[FPGA or Bluespec Simulator]`
+  - [CoreMark](#coremark-bluespec-simulation) `[Docker]`: single-threaded overhead estimate
+  - [MiBench](#mibench-bluespec-simulation) `[Docker]`: 15-benchmark suite (Table 1 / Table 3)
+  - [SPEC CPU2006](#spec-cpu2006) `[VCU118]`: 8-benchmark integer suite (≈5% g.m. overhead)
+  - [Pgbench](#pgbench) `[VCU118]`: PostgreSQL throughput
+  - [SQLite](#sqlite) `[VCU118]`: per-operation timing
+  - [gRPC](#grpc) `[VCU118]`: RPC latency/throughput
 
 ---
 
@@ -80,18 +87,11 @@ Then build the image for your chosen evaluation path:
 
 The Bluespec image takes **1–2 hours** to build (two full Bluespec elaborations,
 ~15 GB intermediate artifacts). The QEMU image is faster but still clones and
-patches several large repos — run it in advance.
+patches several large repos. 
 
 Once the image is built, proceed to [Bluespec_simulation.md](./Bluespec_simulation.md)
 or [QEMU.md](./QEMU.md) for evaluation instructions.
 
-### Native (host install)
-
-If you prefer to install the cheribuild toolchain dependencies directly on
-your host, follow the manual setup sections in [QEMU.md](./QEMU.md) or
-[FPGA.md](./FPGA.md).
-
----
 
 ## Environment Setup
 
@@ -113,68 +113,78 @@ running before proceeding to the evaluation sections below.
 
 ---
 
-## Security Evaluation
+## 7.1 Security Evaluation
 
-The security evaluation can be run on either QEMU (no hardware needed) or FPGA.
+The security evaluation can be run on either QEMU or FPGA.
 
 **Prerequisites — choose one:**
 
-- **QEMU (recommended for artifact evaluation):** Follow [QEMU.md](./QEMU.md) to
-  build and boot CheriBSD under QEMU with SSH access. Docker is the quickest
-  path (`Dockerfile.qemu` sets up everything including a pre-baked SSH key).
-  QEMU must be running and reachable at `root@127.0.0.1 -p 10003` (cheribuild
-  default) or the port you configured before proceeding.
+- **QEMU via Docker (recommended):**
+
+  ```sh
+  # Terminal 1 — start the container and boot CheriBSD
+  docker run -i -t -p 10222:10222 --name picasso-qemu-run picasso-qemu
+  cd ~/cheri/cheribuild
+  ./cheribuild.py run-riscv64-purecap --skip-update \
+      --run-riscv64-purecap/ssh-forwarding-port 10222
+  ```
+
+  QEMU takes over Terminal 1. Open a second terminal for host-side commands:
+
+  ```sh
+  # Terminal 2 — host side
+  docker exec -it picasso-qemu-run bash
+  export SSH_PORT=10222
+  ```
+
+  Wait for the CheriBSD login prompt in Terminal 1 before proceeding.
+
+  > **Tip:** To confirm which port QEMU is using, run in Terminal 2:
+  > `ps aux | grep qemu | grep -o 'hostfwd=[^ ]*'`
+  > You will see `hostfwd=tcp::10222-:22`.
+
+- **QEMU (native):** Follow [QEMU.md](./QEMU.md) Manual Setup, then run
+  `./cheribuild.py run-riscv64-purecap -d`. SSH is reachable at
+  `root@127.0.0.1 -p $SSH_PORT` once the login prompt appears.
 
 - **FPGA:** Follow [FPGA.md](./FPGA.md) to flash the VCU118 and boot CheriBSD.
   Use the pre-built bitstreams and kernels under [`prebuilt/`](./prebuilt/) to
-  skip the build. SSH must be reachable at the FPGA's IP address before
-  proceeding.
+  skip the build. Set `SSH_PORT` to the FPGA's SSH port.
 
 ### Juliet Test Suite (CWE-415/416)
 
-Run the following on the **host** (or inside the Docker container — not inside
-QEMU/FPGA). This cross-compiles all CWE-415/416 binaries for riscv64-purecap
-using the CHERI SDK:
+> **Docker path:** Juliet is pre-built inside the `picasso-qemu` image — skip
+> this step and go straight to [Running on QEMU](#running-on-qemu) below.
+
+For native installs, run the following on the **host** (not inside QEMU/FPGA).
+This cross-compiles all CWE-415/416 binaries for riscv64-purecap using the
+CHERI SDK:
 
 ```sh
 utils_script/juliet_install.sh
 ```
 
-This clones `juliet-test-suite-c` into `$CHERI_ROOT` (default `~/cheri`) and
-produces `$CHERI_ROOT/juliet-test-suite-c/bin/CWE415`,
-`$CHERI_ROOT/juliet-test-suite-c/bin/CWE416`, and
-`$CHERI_ROOT/juliet-test-suite-c/juliet-run.sh`.
+This clones `juliet-test-suite` into `$CHERI_ROOT` (default `~/cheri`) and
+produces `$CHERI_ROOT/juliet-test-suite/bin/CWE415`,
+`$CHERI_ROOT/juliet-test-suite/bin/CWE416`, and
+`$CHERI_ROOT/juliet-test-suite/juliet-run.sh`.
 
 #### Running on QEMU
 
-With QEMU running and SSH reachable (see Prerequisites above), copy the
-binaries and runner script from the **host**:
+Transfer the binaries and create the stdin fixture in one step from the **host**
+(or Docker Terminal 2):
 
 ```sh
 # Run on the host / Docker container
-ssh -p $SSH_PORT root@127.0.0.1 mkdir -p /root/juliet-bin
-scp -r -P $SSH_PORT \
-  $CHERI_ROOT/juliet-test-suite-c/bin/CWE415 \
-  $CHERI_ROOT/juliet-test-suite-c/bin/CWE416 \
-  $CHERI_ROOT/juliet-test-suite-c/juliet-run.sh \
-  root@127.0.0.1:/root/juliet-bin/
+utils_script/transfer_juliet.sh root@127.0.0.1 -p $SSH_PORT
 ```
 
-`juliet-run.sh` feeds each test case's stdin from `/tmp/in.txt`. Create it on
-the guest before running (every test fails with exit code 2 if it is missing):
+Then SSH into the guest and run the tests (a 1s per-testcase timeout prevents
+test cases that wait on stdin from hanging indefinitely):
 
 ```sh
-# Run on the host / Docker container
-ssh -p $SSH_PORT root@127.0.0.1 "printf '%0.sA' {1..366} > /tmp/in.txt"
-```
-
-Then run the tests **inside the guest** (a 1s per-testcase timeout is
-recommended — without it, test cases waiting on stdin can hang indefinitely):
-
-```sh
-# SSH into the guest first: ssh -p $SSH_PORT root@127.0.0.1
+# Inside the guest: ssh -p $SSH_PORT root@127.0.0.1
 cd /root/juliet-bin
-chmod +x juliet-run.sh
 sh juliet-run.sh 415 1s
 sh juliet-run.sh 416 1s
 ```
@@ -185,9 +195,11 @@ pairs.
 
 #### Running on FPGA
 
-Copy test binaries to the FPGA (see [FPGA.md](./FPGA.md) for scp instructions),
-then run as above from `/root/juliet-bin` (remember to create `/tmp/in.txt`
-first):
+```sh
+utils_script/transfer_juliet.sh root@<fpga-ip>
+```
+
+Then SSH in and run as above from `/root/juliet-bin`:
 
 ```sh
 cd /root/juliet-bin
@@ -213,12 +225,20 @@ We validate PICASSO against 11 real-world UAF/Double-Free CVEs from published
 benchmarks. See [`validation/README.md`](./validation/README.md) for full
 details.
 
-Run the following on the **host** (or inside the Docker container — not inside
-QEMU/FPGA). Build and transfer all CVE PoCs to the running guest:
+> **Docker path:** All 11 CVE PoCs are pre-built inside the `picasso-qemu`
+> image — skip `build_all.sh` and go straight to `transfer.sh`.
+
+For native installs, build the PoCs first on the **host** (not inside QEMU/FPGA):
 
 ```sh
 cd $ARTIFACT_DIR/validation
 ./build_all.sh
+```
+
+Then transfer to the running guest (Docker or native):
+
+```sh
+cd $ARTIFACT_DIR/validation
 ./transfer.sh root@127.0.0.1 -p $SSH_PORT
 ```
 
@@ -240,7 +260,88 @@ mjs (issues 73, 78), and yasm (issue 91).
 
 ---
 
-## SPEC CPU2006
+## 7.2 Performance Evaluations
+
+### MiBench (Bluespec Simulation)
+
+MiBench results are reproduced using the Bluespec simulator — no FPGA
+hardware needed, only Docker.
+
+**Prerequisite:** `picasso` Docker image built (see
+[Getting Started](#getting-started)).
+
+```sh
+docker run -i -t picasso
+```
+
+Inside the container:
+
+```sh
+cd /home/ubuntu/bench
+./run_mibench.sh
+```
+
+This runs all 15 MiBench benchmarks against both the baseline and PICASSO
+simulators and prints a per-benchmark cycle/instruction overhead table.
+See [Bluespec_simulation.md](./Bluespec_simulation.md) for full details and
+expected results.
+
+---
+
+### CoreMark (Bluespec Simulation)
+
+CoreMark measures single-threaded CPU performance using list processing, matrix manipulation, and state-machine workloads. Running it through the Bluespec simulators quantifies the overhead of CHERI purecap and PICASSO's colored capabilities over a baseline (non-purecap) build.
+
+**Prerequisite:** `picasso` Docker image built (see [Getting Started](#getting-started)).
+
+```sh
+docker run -i -t picasso
+```
+
+Inside the container:
+
+```sh
+cd /home/ubuntu/bench/coremark
+./run_coremark_for_sim.sh
+```
+
+This runs the pre-built baseline and purecap CoreMark ELFs through both simulators (3 runs each, averaged) and prints a comparison table.
+
+<details>
+<summary>Expected output</summary>
+
+```
+=== CoreMark Performance Summary (Bluespec simulation) ===
+
+[*] Running baseline/nocap ... done (avg over 3 runs)
+[*] Running baseline/purecap ... done (avg over 3 runs)
+[*] Running picasso/purecap ... done (avg over 3 runs)
+
+Simulator                    Config           Total ticks      Delta        Overhead
+----------------------------------------------------------------------------------------
+CHERI-Toooba (baseline)      nocap            <baseline_ticks> -            -
+                             purecap          <purecap_ticks>  <delta>      ~2.6%
+CHERI-Toooba (PICASSO)       purecap          <picasso_ticks>  <delta>      ~5%
+
+Note: Simulation ticks differ from FPGA ticks (25 MHz clock). The overhead
+percentage is what corresponds to Table 1 in the paper.
+```
+
+</details>
+
+The overhead percentages in simulation may differ slightly from the FPGA results in the paper — the relative ordering (baseline < purecap < PICASSO) is consistent. Table 1 in the extended paper reports the hardware measurements.
+
+**Building ELFs from source (optional):** Pre-built ELFs are included at `benchmarks/coremark/`. If you want to rebuild them using the CHERI SDK (requires `Dockerfile.qemu` environment with newlib baremetal):
+
+```sh
+# Inside the picasso-qemu container — SDK already built there
+cd /home/ubuntu/cheri/Colored_Usenix/utils_script/coremark
+./build_coremark_for_sim.sh
+```
+
+---
+
+### SPEC CPU2006
 
 > **Note:** Due to licensing restrictions, we do not provide the SPEC CPU2006 source code. Evaluators must have their own valid SPEC CPU2006 license to reproduce these results.
 
@@ -259,7 +360,7 @@ The built SPEC folder is placed at:
 $CHERI_ROOT/build/spec2006-riscv64-purecap-build
 ```
 
-### Running SPEC CPU2006 on FPGA
+#### Running SPEC CPU2006 on FPGA
 
 **Prerequisite:** FPGA running CheriBSD with SSH reachable (see [FPGA.md](./FPGA.md)).
 
@@ -298,7 +399,7 @@ The results for each benchmark will be output to:
 <benchmark>/<benchmark>_OUTPUT/
 ```
 
-### Analyzing SPEC CPU2006 Results
+#### Analyzing SPEC CPU2006 Results
 
 After collecting results for all configurations (baseline, colored_paper, cornucupia),
 place the `_OUTPUT` directories under `utils_script/spec/`:
@@ -322,7 +423,7 @@ This produces:
 
 ---
 
-## Pgbench
+### Pgbench
 
 **Prerequisite:** FPGA running CheriBSD with SSH reachable (see [FPGA.md](./FPGA.md)).
 
@@ -354,7 +455,7 @@ sh $ARTIFACT_DIR/utils_script/postgress/pgbench-client.sh
 
 ---
 
-## SQLite
+### SQLite
 
 **Prerequisite:** FPGA running CheriBSD with SSH reachable (see [FPGA.md](./FPGA.md)).
 
@@ -382,7 +483,7 @@ python3 $ARTIFACT_DIR/utils_script/sqlite/analyze_sqlite.py
 ```
 ---
 
-## gRPC
+### gRPC
 
 **Prerequisite:** QEMU or FPGA running CheriBSD with SSH reachable.
 

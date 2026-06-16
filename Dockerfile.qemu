@@ -45,6 +45,7 @@ ENV LANG=en_US.UTF-8
 ENV LANGUAGE=en_US.UTF-8
 ENV LC_ALL=en_US.UTF-8
 
+
 RUN pip3 install pyyaml "cmake>=3.20"
 
 # Use clang as the host compiler for native builds (e.g. cheribuild's "qemu"
@@ -125,12 +126,50 @@ RUN git init -q cheribsd && cd cheribsd && \
 RUN git init -q gdb && cd gdb && \
     git remote add origin https://github.com/CTSRD-CHERI/gdb.git && \
     git fetch -q --depth 1 origin 6b6284a9a2bbbe50548b7d1271e6984c26b12c24 && \
-    git checkout -q FETCH_HEAD
+    git checkout -q FETCH_HEAD && \
+    sed -i 's/errors=`(${CC} -c conftest.adb) 2>&1 || echo failure`/errors="failure"/' configure
 
 # samba (smbd) is required by cheribuild's "run" target for QEMU host-share
 # (mount_smbfs) support. Installed as its own layer at the end so that it
 # doesn't invalidate the source-checkout layers above.
 RUN sudo apt-get update && sudo apt-get install -y samba && sudo rm -rf /var/lib/apt/lists/*
+
+# Build everything (QEMU, LLVM/SDK, CheriBSD, disk image) during docker build
+# so evaluators don't have to wait. --skip-update uses the already-cloned repos
+# above. Split into two RUN steps so Docker can cache each layer independently.
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py disk-image-riscv64-purecap -d --skip-update
+
+# Build GDB separately (Ada check is already patched above in the gdb clone step)
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py gdb-riscv64-hybrid-for-purecap-rootfs -d --skip-update
+
+
+# Copy artifact scripts — placed after the expensive build layers so that
+# changes to utils_script/ or validation/ don't invalidate the build cache.
+# Files land at $CHERI_ROOT/utils_script/ and $CHERI_ROOT/validation/;
+# ARTIFACT_DIR is set to $CHERI_ROOT so $ARTIFACT_DIR/utils_script/ etc. work.
+COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
+COPY --chown=$USERNAME:$USERNAME ./validation ./validation
+ENV ARTIFACT_DIR=$CHERI_ROOT
+
+# Pre-build Juliet test suite (CWE-415/416) so evaluators can scp directly
+# without running juliet_install.sh first.
+# ccc lives in validation/ (copied above); juliet_install.sh uses BASH_SOURCE
+# so must be run with bash, not sh.
+RUN PATH="$CHERI_ROOT/validation:$PATH" \
+    bash $CHERI_ROOT/utils_script/juliet_install.sh
+
+# Pre-build all 11 CVE validation PoCs so evaluators can skip build_all.sh
+# and go straight to transfer.sh. ccc finds the SDK at ~/cheri/output/sdk.
+RUN sh $CHERI_ROOT/validation/build_all.sh
+
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py qemu -d --skip-update
+
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py bbl-baremetal-riscv64-purecap --skip-update
+
 
 WORKDIR $CHERI_ROOT/cheribuild
 

@@ -11,6 +11,26 @@ Start the container:
 docker run -i -t picasso
 ```
 
+## CoreMark (Quick Performance Check)
+
+CoreMark is a single-threaded benchmark that gives a fast overhead estimate. Pre-built ELFs are included so no SDK build is required.
+
+```sh
+# Inside the Docker container
+cd /home/ubuntu/bench/coremark
+./run_coremark_for_sim.sh
+```
+
+This runs 3 iterations of each configuration through both simulators and prints a summary:
+
+- **CHERI-Toooba (baseline) / nocap** — non-purecap baseline
+- **CHERI-Toooba (baseline) / purecap** — CHERI purecap overhead (no colored capabilities)
+- **CHERI-Toooba (PICASSO) / purecap** — full PICASSO overhead
+
+The key figure is the PICASSO purecap overhead vs baseline — this corresponds to Table 1 in the paper. Simulation ticks differ from FPGA ticks but the overhead ratio is comparable.
+
+---
+
 ## Running MiBench Benchmarks (Simulation)
 
 After starting the Docker container, you can run the MiBench benchmark suite to compare the baseline and PICASSO simulators.

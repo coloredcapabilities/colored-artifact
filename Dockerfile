@@ -30,6 +30,7 @@ RUN apt update && apt install -y \
     python3-pip \
     libtcl8.6 \
     libelf-dev \
+    bc \
     sudo
 
 RUN  pip3 install pyyaml
@@ -58,6 +59,7 @@ WORKDIR /home/$USERNAME/
 COPY --chown=$USERNAME:$USERNAME ./patches ./patches
 
 ### Let's build Toooba core for baseline 
+RUN mkdir -p /home/$USERNAME/cheri
 WORKDIR /home/$USERNAME/cheri
 RUN git clone https://github.com/CTSRD-CHERI/Toooba.git &&  cd Toooba && git checkout a8299cfc01896 && git submodule update --init --recursive
 ENV TOOOBA_ROOT=/home/$USERNAME/cheri/Toooba/

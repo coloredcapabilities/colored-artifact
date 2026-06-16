@@ -34,15 +34,33 @@ is needed.
 Start the container with the SSH port published:
 
 ```sh
-docker run -i -t -p 10222:10222 picasso-qemu
+docker run -i -t -p 10222:10222 --name picasso-qemu-run picasso-qemu
 ```
+
+The image includes `utils_script/` and `validation/` baked in at
+`~/cheri/Colored_Usenix/` (`$ARTIFACT_DIR`), and CheriBSD is already
+fully built — no compilation wait on first run.
 
 Inside the container, build and boot CheriBSD as in [Manual Setup](#manual-setup):
 
 ```sh
+# Terminal 1 — inside the container
 cd ~/cheri/cheribuild
 ./cheribuild.py run-riscv64-purecap -d
 ```
+
+> **Note:** Once QEMU boots, it takes over Terminal 1 with the CheriBSD serial
+> console. Keep it running and open a **second terminal** on your host to run
+> any follow-up steps (scp, ssh, Juliet tests, CVE validation):
+>
+> ```sh
+> # Terminal 2 — on the host
+> docker exec -it picasso-qemu-run bash
+> ```
+>
+> You now have two shells: Terminal 1 is the QEMU console, Terminal 2 is a
+> fresh shell inside the same container where you can run host-side commands
+> against the running guest.
 
 The first run builds QEMU, LLVM, and the CheriBSD rootfs/kernel under
 `~/cheri/output/` (`~/cheri/output/sdk` for the SDK, including
