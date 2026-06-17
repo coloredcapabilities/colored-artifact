@@ -85,10 +85,15 @@ ENV SIM_PICASSO=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bl
 
 ### Setup benchmark scripts
 WORKDIR /home/$USERNAME/
-RUN mkdir -p bench/bench_log
+RUN mkdir -p bench/bench_log bench/coremark/benchmarks bench/coremark/logs
 COPY --chown=$USERNAME:$USERNAME ./utils_script/mibench/run_mibench.sh ./bench/
 COPY --chown=$USERNAME:$USERNAME ./utils_script/mibench/compare_benchmarks.sh ./bench/
-RUN chmod +x ./bench/run_mibench.sh ./bench/compare_benchmarks.sh
+COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/run_coremark_for_sim.sh ./bench/coremark/
+COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/build_coremark_for_sim.sh ./bench/coremark/
+COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/benchmarks ./bench/coremark/benchmarks
+RUN chmod +x ./bench/run_mibench.sh ./bench/compare_benchmarks.sh \
+              ./bench/coremark/run_coremark_for_sim.sh \
+              ./bench/coremark/build_coremark_for_sim.sh
 
 USER root
 RUN echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/no-passwd && \
