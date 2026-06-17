@@ -72,7 +72,10 @@ RUN cp exe_HW_sim.so exe_HW_sim_baseline.so
 ENV SIM_BASELINE=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim_baseline
 
 ### Let's build Toooba core for picasso
-RUN cd ${TOOOBA_ROOT} &&  git apply  /home/$USERNAME/patches/toooba_colored.patch && cd ${TOOOBA_ROOT}/libs/cheri-cap-lib/ && git apply  /home/$USERNAME/patches/cheri-cap-lib_colored.patch
+RUN cd ${TOOOBA_ROOT} && \
+    git apply --exclude='Tests/isa/coremark.elf' /home/$USERNAME/patches/toooba_colored.patch && \
+    cd ${TOOOBA_ROOT}/libs/cheri-cap-lib/ && \
+    git apply /home/$USERNAME/patches/cheri-cap-lib_colored.patch
 RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
 RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/lib/DTlb.bsv
 RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/lib/SplitLSQ.bsv
