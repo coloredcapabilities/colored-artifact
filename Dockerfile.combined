@@ -254,5 +254,14 @@ COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/run_coremark_for_sim.sh
     $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
 RUN chmod +x $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
 
+# Pre-build SQLite + speedtest1 so utils_script/sqlite/run_speedtest1.sh can
+# skip straight to transferring/running against a live guest (--no-build).
+# speedtest1 isn't part of cheribuild's default sqlite build target, so it
+# must be built explicitly from within the configured build directory.
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py sqlite-riscv64-purecap -d --skip-update
+RUN cd $CHERI_ROOT/build/sqlite-riscv64-purecap-build && make speedtest1
+
+
 WORKDIR $CHERI_ROOT/cheribuild
 CMD ["/bin/bash"]
