@@ -52,36 +52,38 @@ check_prereqs() {
 }
 
 # run_sim <sim_binary> <elf_file> <label>
-# Runs RUNS times, extracts "Total ticks" from each, returns the average via stdout.
+# Runs RUNS times, extracts cycle count ("FAIL <N>") from each, returns the average via stdout.
 run_sim() {
     sim="$1"
     elf="$2"
     label="$3"
 
-    printf "[*] Running %s ..." "$label"
+    printf "[*] Running %s ..." "$label" >&2
 
     mkdir -p "${LOG_DIR}"
-    tmp_hex="${LOG_DIR}/${label}.hex"
-    "${ELF_TO_HEX}" 8 "${elf}" "${tmp_hex}"
+    # Simulator reads Mem.hex from its working directory (BUILD_DIR)
+    "${ELF_TO_HEX}" "${elf}" "${BUILD_DIR}/Mem.hex" >&2
 
     total=0
     i=0
     while [ $i -lt "$RUNS" ]; do
         i=$((i + 1))
-        out=$(cd "$BUILD_DIR" && "${sim}" +tohost "${tmp_hex}" 2>&1) || true
-        ticks=$(printf '%s\n' "$out" | grep "Total ticks" | sed 's/[^0-9]//g' | tail -1)
+        log="${LOG_DIR}/${label}_run${i}.log"
+        printf "[*] Running %s (run %d/%d) — log: %s\n" "$label" "$i" "$RUNS" "$log" >&2
+        # Write directly to log file so output is inspectable while running
+        (cd "$BUILD_DIR" && "${sim}" +tohost > "$log" 2>&1) || true
+        # Toooba reports cycle count as "FAIL <N>" via the tohost exit mechanism
+        ticks=$(grep -E "FAIL [0-9]+$" "$log" | tail -1 | awk '{print $2}')
         if [ -z "$ticks" ]; then
-            echo ""
-            echo "ERROR: no 'Total ticks' in simulator output for $label run $i"
-            echo "Simulator output:"
-            printf '%s\n' "$out" | tail -20
+            printf 'ERROR: no cycle count in %s\n' "$log" >&2
+            tail -20 "$log" >&2
             exit 1
         fi
+        printf "    -> %s cycles\n" "$ticks" >&2
         total=$((total + ticks))
     done
 
     avg=$((total / RUNS))
-    echo " done (avg over $RUNS runs)"
     printf '%s' "$avg"
 }
 

@@ -45,13 +45,6 @@ cd /home/ubuntu/bench
 ./run_mibench.sh
 ```
 
-> **Note:** Do not use `make benchmarks SIM=...` directly from
-> `/home/ubuntu/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim` — the
-> Makefile's `benchmarks` target ignores the `SIM=`/`SIM_EXE_FILE=`/`LOGS_DIR=`
-> variables and always runs `./exe_HW_sim` into `./Logs`, so it cannot be used
-> to compare the baseline and PICASSO binaries. `run_mibench.sh` instead runs
-> `Tests/Run_benchmarks.py` directly against each simulator with separate log
-> directories (`Logs_baseline`, `Logs_picasso`).
 
 `run_mibench.sh` accepts `--baseline-only` or `--picasso-only` to run a single
 configuration; in that case it skips the automatic comparison and prints a
@@ -75,8 +68,7 @@ This generates:
 ### Expected Results
 
 Across the MiBench suite, PICASSO's colored capabilities should add only a
-small cycle-count overhead over the baseline (consistent with the paper's
-reported ~5% geometric-mean overhead on SPEC CPU2006); instruction counts
+small cycle-count overhead over the baseline; instruction counts
 should be identical or nearly identical between configurations, since the
 extra cycles come from pipeline/memory effects rather than additional
 instructions.

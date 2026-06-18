@@ -20,7 +20,7 @@ RUN apt update && apt install -y \
     build-essential \
     unzip \
     pkg-config \
-    tzdata \ 
+    tzdata \
     python3 \
     autoconf \
     automake \
@@ -58,7 +58,7 @@ RUN cd bsc-contrib && git checkout 17e029843cefb3421913d630b2984a1591d2cb8c && m
 WORKDIR /home/$USERNAME/
 COPY --chown=$USERNAME:$USERNAME ./patches ./patches
 
-### Let's build Toooba core for baseline 
+### Let's build Toooba core for baseline
 RUN mkdir -p /home/$USERNAME/cheri
 WORKDIR /home/$USERNAME/cheri
 RUN git clone https://github.com/CTSRD-CHERI/Toooba.git &&  cd Toooba && git checkout a8299cfc01896 && git submodule update --init --recursive
@@ -83,17 +83,37 @@ RUN make compile && make simulator
 RUN make -C ${TOOOBA_ROOT}/Tests/elf_to_hex
 ENV SIM_PICASSO=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim
 
-### Setup benchmark scripts
+### Setup benchmark scripts and artifact utilities
 WORKDIR /home/$USERNAME/
-RUN mkdir -p bench/bench_log bench/coremark/benchmarks bench/coremark/logs
+RUN mkdir -p bench/bench_log
 COPY --chown=$USERNAME:$USERNAME ./utils_script/mibench/run_mibench.sh ./bench/
 COPY --chown=$USERNAME:$USERNAME ./utils_script/mibench/compare_benchmarks.sh ./bench/
-COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/run_coremark_for_sim.sh ./bench/coremark/
-COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/build_coremark_for_sim.sh ./bench/coremark/
-COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/benchmarks ./bench/coremark/benchmarks
-RUN chmod +x ./bench/run_mibench.sh ./bench/compare_benchmarks.sh \
-              ./bench/coremark/run_coremark_for_sim.sh \
-              ./bench/coremark/build_coremark_for_sim.sh
+RUN chmod +x ./bench/run_mibench.sh ./bench/compare_benchmarks.sh
+
+COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
+
+# Clone blinded-cheri-sw for coremark run/build scripts
+WORKDIR /home/$USERNAME/cheri
+RUN git clone https://github.com/blindedcapabilities/blinded-cheri-sw.git
+ENV BLINDED_SW_ROOT=/home/$USERNAME/cheri/blinded-cheri-sw
+# SIM_BLACKOUT is blinded-cheri-sw's name for the patched simulator (= PICASSO)
+ENV SIM_BLACKOUT=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim
+
+# Copy pre-built coremark ELFs into the location blinded-cheri-sw's run script expects
+RUN mkdir -p ${BLINDED_SW_ROOT}/benchmarks/coremark
+COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/benchmarks/coremark/coremark_baseline.elf ${BLINDED_SW_ROOT}/benchmarks/coremark/
+COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/benchmarks/coremark/coremark_purecap.elf  ${BLINDED_SW_ROOT}/benchmarks/coremark/
+
+# Wrapper scripts in bench/coremark/ that cd to blinded-cheri-sw root first
+# (the build/run scripts use relative paths so must run from the repo root)
+WORKDIR /home/$USERNAME/
+RUN mkdir -p bench/coremark && \
+    printf '#!/bin/sh\ncd %s && sh build_scripts/build_coremark_for_sim.sh "$@"\n' \
+        "${BLINDED_SW_ROOT}" > bench/coremark/build_coremark_for_sim.sh && \
+    printf '#!/bin/sh\ncd %s && sh build_scripts/run_coremark_for_sim.sh "$@"\n' \
+        "${BLINDED_SW_ROOT}" > bench/coremark/run_coremark_for_sim.sh && \
+    chmod +x bench/coremark/build_coremark_for_sim.sh \
+             bench/coremark/run_coremark_for_sim.sh
 
 USER root
 RUN echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/no-passwd && \

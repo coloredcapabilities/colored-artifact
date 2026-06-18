@@ -99,7 +99,7 @@ Set these variables once in your shell (host or Docker container) before
 running any commands in this README:
 
 ```sh
-export ARTIFACT_DIR=~/cheri/Colored_Usenix   # path to this repo
+export ARTIFACT_DIR=~/cheri/colered-artifact   # path to this repo
 export CHERI_ROOT=~/cheri                      # cheribuild source/output root
 export CHERIBUILD=~/cheri/cheribuild           # cheribuild checkout
 export SSH_PORT=10222   # guest SSH port: 10222 for qemu_ssh_boot.py (Docker path),
@@ -134,17 +134,15 @@ The security evaluation can be run on either QEMU or FPGA.
   ```sh
   # Terminal 2 — host side
   docker exec -it picasso-qemu-run bash
-  export SSH_PORT=10222
+  export SSH_PORT=1022
   ```
 
   Wait for the CheriBSD login prompt in Terminal 1 before proceeding.
+  Log in as **`root`** with no password.
 
-  > **Tip:** To confirm which port QEMU is using, run in Terminal 2:
-  > `ps aux | grep qemu | grep -o 'hostfwd=[^ ]*'`
-  > You will see `hostfwd=tcp::10222-:22`.
 
 - **QEMU (native):** Follow [QEMU.md](./QEMU.md) Manual Setup, then run
-  `./cheribuild.py run-riscv64-purecap -d`. SSH is reachable at
+  `./cheribuild.py run-riscv64-purecap --skip-update`. SSH is reachable at
   `root@127.0.0.1 -p $SSH_PORT` once the login prompt appears.
 
 - **FPGA:** Follow [FPGA.md](./FPGA.md) to flash the VCU118 and boot CheriBSD.
@@ -161,7 +159,7 @@ This cross-compiles all CWE-415/416 binaries for riscv64-purecap using the
 CHERI SDK:
 
 ```sh
-utils_script/juliet_install.sh
+${ARTIFACT_DIR}/utils_script/juliet_install.sh
 ```
 
 This clones `juliet-test-suite` into `$CHERI_ROOT` (default `~/cheri`) and
@@ -283,8 +281,34 @@ cd /home/ubuntu/bench
 
 This runs all 15 MiBench benchmarks against both the baseline and PICASSO
 simulators and prints a per-benchmark cycle/instruction overhead table.
-See [Bluespec_simulation.md](./Bluespec_simulation.md) for full details and
-expected results.
+See [Bluespec_simulation.md](./Bluespec_simulation.md) for full details.
+
+<details>
+<summary>Expected output</summary>
+
+```
+Benchmark                     Base Cycles     Base Instrs      PIC Cycles      PIC Instrs  Cyc OH(%) Inst OH(%)
+------------------------- --------------- --------------- --------------- --------------- ---------- ----------
+randmath.bin                        38221            5733           38601            5733        .99          0
+qsort.bin                          514081          732242          513281          732242       -.15          0
+aes.bin                             74548           81026           75133           81026        .78          0
+dijkstra.bin                      1427512         2569261         1432030         2569261        .31          0
+crc.bin                             14435           12305           14509           12305        .51          0
+rc4.bin                             67938          122379           68072          122379        .19          0
+bitcount.bin                      2632864         4250893         2632886         4250893          0          0
+adpcm_encode.bin                  3048620         3880822         3083658         3880822       1.14          0
+patricia.bin                      1610777         2467112         1632902         2467112       1.37          0
+rsa.bin                             49450           60209           52004           60209       5.16          0
+sha.bin                           1464582         2675784         1474223         2675784        .65          0
+adpcm_decode.bin                  3325012         2909607         3380972         2909607       1.68          0
+blowfish.bin                      1393763         2412853         1465512         2412853       5.14          0
+limits.bin                           4434            1628            4436            1628        .04          0
+picojpeg.bin                      2038299         2638124         2074049         2638124       1.75          0
+------------------------- --------------- --------------- --------------- --------------- ---------- ----------
+TOTAL                            17704536        24819978        17942268        24819978       1.34          0
+```
+
+</details>
 
 ---
 
@@ -302,6 +326,7 @@ Inside the container:
 
 ```sh
 cd /home/ubuntu/bench/coremark
+./build_coremark_for_sim.sh
 ./run_coremark_for_sim.sh
 ```
 
