@@ -235,5 +235,12 @@ RUN mkdir -p bench/coremark && \
     chmod +x bench/coremark/build_coremark_for_sim.sh \
              bench/coremark/run_coremark_for_sim.sh
 
+# Overwrite blinded-cheri-sw's run_coremark_for_sim.sh with our version, which
+# adds the PICASSO-vs-CHERI-Toooba-baseline comparison (cross-core delta) that
+# upstream doesn't compute — upstream only reports the purecap tax within each
+# simulator individually. See utils_script/coremark/run_coremark_for_sim.sh.
+COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/run_coremark_for_sim.sh \
+    $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
+
 WORKDIR $CHERI_ROOT/cheribuild
 CMD ["/bin/bash"]
