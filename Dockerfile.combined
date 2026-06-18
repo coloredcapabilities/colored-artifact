@@ -258,11 +258,34 @@ RUN chmod +x $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
 # skip straight to transferring/running against a live guest (--no-build).
 # speedtest1 isn't part of cheribuild's default sqlite build target, so it
 # must be built explicitly from within the configured build directory.
-RUN sudo apt-get install -y tclsh 
+RUN sudo apt-get install -y tclsh
 RUN cd $CHERI_ROOT/cheribuild && \
     ./cheribuild.py sqlite-riscv64-purecap -d --skip-update
 RUN cd $CHERI_ROOT/build/sqlite-riscv64-purecap-build && make speedtest1
 
+# --- Baseline (Cornucopia) CheriBSD kernel, for revocation-count comparison ---
+# Separate CheriBSD checkout: same pinned commit as the PICASSO cheribsd
+# above, but with only mrs_base_revoke_count.patch applied (no
+# cheribsd_colored.diff) -- standard CHERI purecap + Cornucopia software
+# revocation, so it actually exercises MRS's quarantine/revoke path and
+# prints "revoke counter"/"alloc counter" (see utils_script/sqlite/run_speedtest1.sh).
+RUN git init -q cheribsd-baseline && cd cheribsd-baseline && \
+    git remote add origin https://github.com/CTSRD-CHERI/cheribsd.git && \
+    git fetch -q --depth 1 origin 485c1c8195563d2be65ed2eb1bf7d8bc06eb1a64 && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/mrs_base_revoke_count.patch
+
+# Build into separate build/install/image paths so this doesn't clobber the
+# PICASSO kernel/disk image built above. Verified via --dump-configuration
+# that these overrides correctly propagate to the dependent kernel target too.
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py disk-image-riscv64-purecap -d --skip-update \
+        --cheribsd-riscv64-purecap/source-directory=$CHERI_ROOT/cheribsd-baseline \
+        --cheribsd-riscv64-purecap/build-directory=$CHERI_ROOT/build/cheribsd-baseline-riscv64-purecap-build \
+        --cheribsd-riscv64-purecap/install-directory=$CHERI_ROOT/output/rootfs-baseline-riscv64-purecap \
+        --cheribsd-mfs-root-kernel-riscv64-purecap/build-directory=$CHERI_ROOT/build/cheribsd-baseline-riscv64-purecap-build \
+        --cheribsd-mfs-root-kernel-riscv64-purecap/install-directory=$CHERI_ROOT/output/rootfs-baseline-riscv64-purecap \
+        --disk-image-riscv64-purecap/path=$CHERI_ROOT/output/cheribsd-baseline-riscv64-purecap.img
 
 WORKDIR $CHERI_ROOT/cheribuild
 CMD ["/bin/bash"]
