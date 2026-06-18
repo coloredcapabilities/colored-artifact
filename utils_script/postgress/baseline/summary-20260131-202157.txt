@@ -1,0 +1,44 @@
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 10
+query mode: simple
+number of clients: 1
+number of threads: 1
+number of transactions per client: 1000
+number of transactions actually processed: 1000/1000
+latency average = 468.850 ms
+tps = 2.132877 (including connections establishing)
+tps = 2.137520 (excluding connections establishing)
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 10
+query mode: simple
+number of clients: 1
+number of threads: 1
+number of transactions per client: 1000
+number of transactions actually processed: 1000/1000
+latency average = 488.083 ms
+tps = 2.048832 (including connections establishing)
+tps = 2.052968 (excluding connections establishing)
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 10
+query mode: simple
+number of clients: 1
+number of threads: 1
+number of transactions per client: 1000
+number of transactions actually processed: 1000/1000
+latency average = 478.282 ms
+tps = 2.090815 (including connections establishing)
+tps = 2.095056 (excluding connections establishing)
+starting vacuum...end.
+transaction type: <builtin: TPC-B (sort of)>
+scaling factor: 10
+query mode: simple
+number of clients: 1
+number of threads: 1
+number of transactions per client: 1000
+number of transactions actually processed: 1000/1000
+latency average = 476.013 ms
+tps = 2.100784 (including connections establishing)
+tps = 2.105512 (excluding connections establishing)

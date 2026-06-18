@@ -78,13 +78,11 @@ Install Docker first if you don't have it:
 # Verify with: docker run --rm hello-world
 ```
 
-The Bluespec image takes **1–2 hours** to build (two full Bluespec elaborations,
-~15 GB intermediate artifacts). The QEMU image is faster but still clones and
-patches several large repos. The combined image takes longest, since it builds
-the Bluespec simulators, the CHERI SDK, and CoreMark ELFs all in one image.
+Build PICASSO docker images 
 
-Once the image is built, proceed to [Bluespec_simulation.md](./Bluespec_simulation.md)
-or [QEMU.md](./QEMU.md) for evaluation instructions.
+```sh
+docker build --network=host -f Dockerfile -t picasso .
+```
 
 
 ## Environment Setup
@@ -93,7 +91,7 @@ Set these variables once in your shell (host or Docker container) before
 running any commands in this README:
 
 ```sh
-export ARTIFACT_DIR=~/cheri/colered-artifact   # path to this repo
+export ARTIFACT_DIR=~/cheri/colored-artifact   # path to this repo
 export CHERI_ROOT=~/cheri                      # cheribuild source/output root
 export CHERIBUILD=~/cheri/cheribuild           # cheribuild checkout
 export SSH_PORT=10222   # guest SSH port: 10222 for qemu_ssh_boot.py (Docker path),
@@ -134,51 +132,10 @@ The security evaluation can be run on either QEMU or FPGA.
   Wait for the CheriBSD login prompt in Terminal 1 before proceeding.
   Log in as **`root`** with no password.
 
-  ```
-  HOST MACHINE
-    │
-    │ docker run -i -t --name picasso-qemu-run picasso-qemu
-    ▼
-  ┌───────────────────────────────────────────────┐
-  │         Container: picasso-qemu-run            │
-  │                                                  │
-  │  ┌────────────────────────────────────────┐    │
-  │  │ Terminal 1 (the docker run shell)       │    │
-  │  │                                          │    │
-  │  │  $ cd ~/cheri/cheribuild                │    │
-  │  │  $ ./cheribuild.py run-riscv64-purecap  │    │
-  │  │      --skip-update                       │    │
-  │  │            │                             │    │
-  │  │            ▼                             │    │
-  │  │  ┌──────────────────────────────────┐  │    │
-  │  │  │ qemu-system-riscv64cheri          │  │    │
-  │  │  │ booting/running the CheriBSD guest│  │    │
-  │  │  └──────────────────────────────────┘  │    │
-  │  │                                          │    │
-  │  │  ⚠ QEMU takes over this terminal as the │    │
-  │  │    CheriBSD serial console (login: root,│    │
-  │  │    no password). Leave it running.      │    │
-  │  └────────────────────────────────────────┘    │
-  │                       ▲                         │
-  │                       │ ssh root@127.0.0.1       │
-  │                       │   -p 10222 (no password) │
-  │                       │                          │
-  │  ┌────────────────────────────────────────┐    │
-  │  │ Terminal 2 (docker exec -it             │    │
-  │  │             picasso-qemu-run bash)      │    │
-  │  │                                          │    │
-  │  │  $ ssh root@127.0.0.1 -p $SSH_PORT      │    │
-  │  │  $ scp <Juliet/CVE PoCs> root@...:      │    │
-  │  │  $ sh validation/transfer.sh ...        │    │
-  │  └────────────────────────────────────────┘    │
-  └───────────────────────────────────────────────┘
-  ```
-
+ 
+  
   Both terminals attach to the **same** container (`picasso-qemu-run`) —
-  Terminal 1 via `docker run`, Terminal 2 via a separate `docker exec`. There's
-  only one container; Terminal 2 just gets its own shell inside it so it can
-  reach the guest over the forwarded SSH port while Terminal 1 stays occupied
-  by the serial console.
+  Terminal 1 via `docker run`, Terminal 2 via a separate `docker exec`. 
 
 - **QEMU (native):** Follow [QEMU.md](./QEMU.md) Manual Setup, then run
   `./cheribuild.py run-riscv64-purecap --skip-update`. SSH is reachable at

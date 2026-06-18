@@ -1,0 +1,8 @@
+Experiment: colored
+Timestamp: 20260131-160734
+Server: 169.254.125.247:5432
+Database: pgbench
+Username: root
+Clients: 1
+Duration: 60s
+Runs: 4
