@@ -1,0 +1,37 @@
+===== 464.h264ref -- default =====
+cycles:         408987631909
+instructions:   598036495798
+time:           4089459140
+
+redirect:       1745533084
+branch:         31074354728
+jal:            1895261565
+jalr:           12382722155
+trap:           11086494
+
+load_wait:      339676307429
+cap_load_tag_set: 29499059115
+cap_store_tag_set: 5497462552
+
+itlb_miss_wait: 23610653
+icache_load:    298275960327
+icache_load_miss: 497230085
+icache_load_miss_wait: 8977643042
+
+dtlb_access:    200253451256
+dtlb_miss:      1028670520
+dtlb_miss_wait: 23800424810
+dcache_load:    169586862246
+dcache_load_miss: 1328895143
+dcache_load_miss_wait: 20717348059
+dcache_store:   28507088849
+dcache_store_miss: 740040824
+
+llcache_load_miss: 1079928544
+llcache_load_miss_wait: 69830712615
+
+tagcache_load:  1545548330
+tagcache_load_miss: 469525
+tagcache_store: 375311423
+tagcache_store_miss: 92329
+tagcache_evict: 149823

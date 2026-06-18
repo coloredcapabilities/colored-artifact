@@ -1,0 +1,11 @@
+mrs[90]: revoke counter: 0
+mrs[90]: alloc counter: 0
+mrs[93]: revoke counter: 0
+mrs[93]: alloc counter: 0
+mrs[92]: revoke counter: 0
+mrs[92]: alloc counter: 0
+mrs[91]: revoke counter: 0
+mrs[91]: alloc counter: 0
+/tmp/spec2006-riscv64-purecap-build/External/SPEC/CINT2006/456.hmmer/../../../../tools/fpcmp-target: error: unable to open '/tmp/spec2006-riscv64-purecap-build/External/SPEC/CINT2006/456.hmmer/leng100.out'
+mrs[94]: revoke counter: 0
+mrs[94]: alloc counter: 0

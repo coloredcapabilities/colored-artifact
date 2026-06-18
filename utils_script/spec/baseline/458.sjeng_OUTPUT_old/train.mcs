@@ -1,0 +1,18 @@
+===== 458.sjeng -- default =====
+cycles:         794969577633
+instructions:   740589323355
+time:           7949040530
+
+redirect:       18178031167
+branch:         87431266378
+jal:            10112661280
+jalr:           13127486216
+trap:           23634414
+
+load_wait:      259101276229
+cap_load_tag_set: 69780325836
+cap_store_tag_set: 16117974077
+
+itlb_miss_wait: 184850720
+icache_load:    572022072781
+icache_load_miss: 3957365812

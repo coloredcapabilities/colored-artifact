@@ -1,0 +1,37 @@
+===== 401.bzip2 -- default =====
+cycles:         25668128674
+instructions:   31756493387
+time:           256661400
+
+redirect:       152427124
+branch:         3756221242
+jal:            202497548
+jalr:           67812136
+trap:           706084
+
+load_wait:      11419596905
+cap_load_tag_set: 593800889
+cap_store_tag_set: 181362416
+
+itlb_miss_wait: 853343
+icache_load:    18321821544
+icache_load_miss: 9012358
+icache_load_miss_wait: 279093254
+
+dtlb_access:    9248032176
+dtlb_miss:      159371064
+dtlb_miss_wait: 2014343365
+dcache_load:    5821757027
+dcache_load_miss: 132333188
+dcache_load_miss_wait: 3805376697
+dcache_store:   3166188469
+dcache_store_miss: 98771069
+
+llcache_load_miss: 103060761
+llcache_load_miss_wait: 7131595828
+
+tagcache_load:  155084622
+tagcache_load_miss: 14209
+tagcache_store: 46971692
+tagcache_store_miss: 4637
+tagcache_evict: 13683

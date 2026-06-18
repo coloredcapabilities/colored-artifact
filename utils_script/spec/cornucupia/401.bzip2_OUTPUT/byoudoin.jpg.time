@@ -1,0 +1,15 @@
+     1028.54 real      1002.99 user         7.76 sys
+     39608  maximum resident set size
+        73  average shared memory size
+        18  average unshared data size
+       129  average unshared stack size
+     10279  page reclaims
+         0  page faults
+         0  swaps
+         0  block input operations
+         0  block output operations
+         0  messages sent
+         0  messages received
+         0  signals received
+         7  voluntary context switches
+     39503  involuntary context switches

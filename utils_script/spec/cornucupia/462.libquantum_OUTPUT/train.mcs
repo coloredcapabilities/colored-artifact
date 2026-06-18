@@ -1,0 +1,37 @@
+===== 462.libquantum -- default =====
+cycles:         6499281832
+instructions:   10637409363
+time:           64987476
+
+redirect:       22212836
+branch:         2158396430
+jal:            137946740
+jalr:           21287421
+trap:           178982
+
+load_wait:      2040648804
+cap_load_tag_set: 81364300
+cap_store_tag_set: 49510617
+
+itlb_miss_wait: 214905
+icache_load:    5785914157
+icache_load_miss: 1931183
+icache_load_miss_wait: 20481326
+
+dtlb_access:    1805450161
+dtlb_miss:      10206056
+dtlb_miss_wait: 306710948
+dcache_load:    1262792020
+dcache_load_miss: 14395376
+dcache_load_miss_wait: 127197281
+dcache_store:   502992069
+dcache_store_miss: 135916224
+
+llcache_load_miss: 2686698
+llcache_load_miss_wait: 139952251
+
+tagcache_load:  3429163
+tagcache_load_miss: 3990
+tagcache_store: 423688
+tagcache_store_miss: 1887
+tagcache_evict: 4568
