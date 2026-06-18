@@ -92,28 +92,9 @@ RUN chmod +x ./bench/run_mibench.sh ./bench/compare_benchmarks.sh
 
 COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
 
-# Clone blinded-cheri-sw for coremark run/build scripts
-WORKDIR /home/$USERNAME/cheri
-RUN git clone https://github.com/blindedcapabilities/blinded-cheri-sw.git
-ENV BLINDED_SW_ROOT=/home/$USERNAME/cheri/blinded-cheri-sw
-# SIM_BLACKOUT is blinded-cheri-sw's name for the patched simulator (= PICASSO)
-ENV SIM_BLACKOUT=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim
-
-# Copy pre-built coremark ELFs into the location blinded-cheri-sw's run script expects
-RUN mkdir -p ${BLINDED_SW_ROOT}/benchmarks/coremark
-COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/benchmarks/coremark/coremark_baseline.elf ${BLINDED_SW_ROOT}/benchmarks/coremark/
-COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/benchmarks/coremark/coremark_purecap.elf  ${BLINDED_SW_ROOT}/benchmarks/coremark/
-
-# Wrapper scripts in bench/coremark/ that cd to blinded-cheri-sw root first
-# (the build/run scripts use relative paths so must run from the repo root)
-WORKDIR /home/$USERNAME/
-RUN mkdir -p bench/coremark && \
-    printf '#!/bin/sh\ncd %s && sh build_scripts/build_coremark_for_sim.sh "$@"\n' \
-        "${BLINDED_SW_ROOT}" > bench/coremark/build_coremark_for_sim.sh && \
-    printf '#!/bin/sh\ncd %s && sh build_scripts/run_coremark_for_sim.sh "$@"\n' \
-        "${BLINDED_SW_ROOT}" > bench/coremark/run_coremark_for_sim.sh && \
-    chmod +x bench/coremark/build_coremark_for_sim.sh \
-             bench/coremark/run_coremark_for_sim.sh
+# Note: CoreMark benchmarking requires the CHERI SDK (clang) to build ELFs
+# for simulation; this Bluespec-only image doesn't build the SDK. See
+# Dockerfile.combined for the full Bluespec + SDK + CoreMark image.
 
 USER root
 RUN echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/no-passwd && \
