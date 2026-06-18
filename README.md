@@ -84,10 +84,12 @@ Then build the image for your chosen evaluation path:
 |-----------------|---------|
 | Bluespec Simulator (MiBench) | `docker build --network=host -t picasso .` |
 | QEMU Emulation (Security evaluation) | `docker build --network=host -f Dockerfile.qemu -t picasso-qemu .` |
+| Bluespec Simulator + CoreMark (includes CHERI SDK) | `docker build --network=host -f Dockerfile.combined -t picasso-combined .` |
 
 The Bluespec image takes **1–2 hours** to build (two full Bluespec elaborations,
 ~15 GB intermediate artifacts). The QEMU image is faster but still clones and
-patches several large repos. 
+patches several large repos. The combined image takes longest, since it builds
+the Bluespec simulators, the CHERI SDK, and CoreMark ELFs all in one image.
 
 Once the image is built, proceed to [Bluespec_simulation.md](./Bluespec_simulation.md)
 or [QEMU.md](./QEMU.md) for evaluation instructions.
@@ -123,7 +125,7 @@ The security evaluation can be run on either QEMU or FPGA.
 
   ```sh
   # Terminal 1 — start the container and boot CheriBSD
-  docker run -i -t -p 10222:10222 --name picasso-qemu-run picasso-qemu
+  docker run -i -t --name picasso-qemu-run picasso-qemu
   cd ~/cheri/cheribuild
   ./cheribuild.py run-riscv64-purecap --skip-update \
       --run-riscv64-purecap/ssh-forwarding-port 10222
@@ -316,51 +318,44 @@ TOTAL                            17704536        24819978        17942268       
 
 CoreMark measures single-threaded CPU performance using list processing, matrix manipulation, and state-machine workloads. Running it through the Bluespec simulators quantifies the overhead of CHERI purecap and PICASSO's colored capabilities over a baseline (non-purecap) build.
 
-**Prerequisite:** `picasso` Docker image built (see [Getting Started](#getting-started)).
+**Prerequisite:** `picasso-combined` Docker image built — this image includes the CHERI SDK needed to build CoreMark ELFs, in addition to the Bluespec simulators:
 
 ```sh
-docker run -i -t picasso
+docker build --network=host -f Dockerfile.combined -t picasso-combined .
+docker run -i -t picasso-combined
 ```
 
-Inside the container:
+Inside the container, the CoreMark ELFs are already built during the image build. To re-run:
 
 ```sh
 cd /home/ubuntu/bench/coremark
-./build_coremark_for_sim.sh
 ./run_coremark_for_sim.sh
 ```
 
-This runs the pre-built baseline and purecap CoreMark ELFs through both simulators (3 runs each, averaged) and prints a comparison table.
+This delegates to [blinded-cheri-sw](https://github.com/blindedcapabilities/blinded-cheri-sw)'s own `run_coremark_for_sim.sh`, which runs the baseline and purecap CoreMark ELFs once each through both simulators and prints a comparison table.
 
 <details>
 <summary>Expected output</summary>
 
 ```
-=== CoreMark Performance Summary (Bluespec simulation) ===
+=== PICASSO overhead vs CHERI-Toooba (baseline simulator) ===
+Comparison                                   Delta ticks     Overhead
+PICASSO purecap vs CHERI-Toooba purecap      3143            3.12%
+PICASSO purecap vs CHERI-Toooba nocap        6009            6.14%
 
-[*] Running baseline/nocap ... done (avg over 3 runs)
-[*] Running baseline/purecap ... done (avg over 3 runs)
-[*] Running picasso/purecap ... done (avg over 3 runs)
-
-Simulator                    Config           Total ticks      Delta        Overhead
-----------------------------------------------------------------------------------------
-CHERI-Toooba (baseline)      nocap            <baseline_ticks> -            -
-                             purecap          <purecap_ticks>  <delta>      ~2.6%
-CHERI-Toooba (PICASSO)       purecap          <picasso_ticks>  <delta>      ~5%
-
-Note: Simulation ticks differ from FPGA ticks (25 MHz clock). The overhead
-percentage is what corresponds to Table 1 in the paper.
+Total runtime: 7 min 38 sec
 ```
+
+Exact tick counts and runtime will vary by machine; the overhead percentages are the representative figures. The last section (PICASSO vs CHERI-Toooba) isolates PICASSO's colored-capability cost specifically, separate from the generic CHERI purecap tax shown in the table above it — this is the figure that corresponds to Table 1 in the paper.
 
 </details>
 
 The overhead percentages in simulation may differ slightly from the FPGA results in the paper — the relative ordering (baseline < purecap < PICASSO) is consistent. Table 1 in the extended paper reports the hardware measurements.
 
-**Building ELFs from source (optional):** Pre-built ELFs are included at `benchmarks/coremark/`. If you want to rebuild them using the CHERI SDK (requires `Dockerfile.qemu` environment with newlib baremetal):
+To rebuild the ELFs from source (e.g. after changing CoreMark source under `~/cheri/blinded-cheri-sw`):
 
 ```sh
-# Inside the picasso-qemu container — SDK already built there
-cd /home/ubuntu/cheri/Colored_Usenix/utils_script/coremark
+cd /home/ubuntu/bench/coremark
 ./build_coremark_for_sim.sh
 ```
 
