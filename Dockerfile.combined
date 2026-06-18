@@ -212,9 +212,14 @@ RUN cd $CHERI_ROOT/cheribuild && \
 # --- Artifact scripts + security pre-builds ---
 # Placed last so script edits don't invalidate the expensive build layers above
 WORKDIR $CHERI_ROOT
-COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
-COPY --chown=$USERNAME:$USERNAME ./validation   ./validation
 ENV ARTIFACT_DIR=$CHERI_ROOT
+
+# Juliet/CVE builds only need juliet_install.sh itself + validation/ (for ccc
+# on PATH) — NOT the rest of utils_script/. Copying just these keeps edits to
+# unrelated utils_script/ subdirs (coremark, mibench, sqlite, grpc, ...) from
+# invalidating the cache for these expensive build steps.
+COPY --chown=$USERNAME:$USERNAME ./utils_script/juliet_install.sh ./utils_script/juliet_install.sh
+COPY --chown=$USERNAME:$USERNAME ./validation ./validation
 
 RUN PATH="$CHERI_ROOT/validation:$PATH" \
     bash $CHERI_ROOT/utils_script/juliet_install.sh
@@ -235,12 +240,19 @@ RUN mkdir -p bench/coremark && \
     chmod +x bench/coremark/build_coremark_for_sim.sh \
              bench/coremark/run_coremark_for_sim.sh
 
+# Full utils_script/ tree (mibench, coremark, sqlite, grpc, spec, postgres,
+# etc.) for evaluators — placed after the expensive Juliet/CVE builds above
+# so edits to these subdirs don't invalidate that cache.
+WORKDIR $CHERI_ROOT
+COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
+
 # Overwrite blinded-cheri-sw's run_coremark_for_sim.sh with our version, which
 # adds the PICASSO-vs-CHERI-Toooba-baseline comparison (cross-core delta) that
 # upstream doesn't compute — upstream only reports the purecap tax within each
 # simulator individually. See utils_script/coremark/run_coremark_for_sim.sh.
 COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/run_coremark_for_sim.sh \
     $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
+RUN chmod +x $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
 
 WORKDIR $CHERI_ROOT/cheribuild
 CMD ["/bin/bash"]

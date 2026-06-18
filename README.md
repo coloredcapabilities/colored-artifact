@@ -52,8 +52,8 @@ PostgreSQL, and gRPC workloads compared to prior work.
 ## Structure
 
 - [7.1 Security Evaluation](#71-security-evaluation) `[QEMU or FPGA]`
-  - [Juliet Test Suite (CWE-415/416)](#juliet-test-suite-cwe-415416): heap UAF/double-free detection
-  - [Real-World CVE Validation](#real-world-cve-validation): 11 CVEs across 9 libraries
+  - [Juliet Test Suite (CWE-415/416)](#juliet-test-suite-cwe-415416)`[Docker]`: heap UAF/double-free detection
+  - [Real-World CVE Validation](#real-world-cve-validation)`[Docker]`: 11 CVEs across 9 libraries
 
 - [7.2 Performance Evaluations](#72-performance-evaluations) `[FPGA or Bluespec Simulator]`
   - [CoreMark](#coremark-bluespec-simulation) `[Docker]`: single-threaded overhead estimate
@@ -77,14 +77,6 @@ Install Docker first if you don't have it:
 # If this is your first Docker install, log out and back in to activate the docker group.
 # Verify with: docker run --rm hello-world
 ```
-
-Then build the image for your chosen evaluation path:
-
-| Evaluation path | Command |
-|-----------------|---------|
-| Bluespec Simulator (MiBench) | `docker build --network=host -t picasso .` |
-| QEMU Emulation (Security evaluation) | `docker build --network=host -f Dockerfile.qemu -t picasso-qemu .` |
-| Bluespec Simulator + CoreMark (includes CHERI SDK) | `docker build --network=host -f Dockerfile.combined -t picasso-combined .` |
 
 The Bluespec image takes **1–2 hours** to build (two full Bluespec elaborations,
 ~15 GB intermediate artifacts). The QEMU image is faster but still clones and
@@ -142,6 +134,51 @@ The security evaluation can be run on either QEMU or FPGA.
   Wait for the CheriBSD login prompt in Terminal 1 before proceeding.
   Log in as **`root`** with no password.
 
+  ```
+  HOST MACHINE
+    │
+    │ docker run -i -t --name picasso-qemu-run picasso-qemu
+    ▼
+  ┌───────────────────────────────────────────────┐
+  │         Container: picasso-qemu-run            │
+  │                                                  │
+  │  ┌────────────────────────────────────────┐    │
+  │  │ Terminal 1 (the docker run shell)       │    │
+  │  │                                          │    │
+  │  │  $ cd ~/cheri/cheribuild                │    │
+  │  │  $ ./cheribuild.py run-riscv64-purecap  │    │
+  │  │      --skip-update                       │    │
+  │  │            │                             │    │
+  │  │            ▼                             │    │
+  │  │  ┌──────────────────────────────────┐  │    │
+  │  │  │ qemu-system-riscv64cheri          │  │    │
+  │  │  │ booting/running the CheriBSD guest│  │    │
+  │  │  └──────────────────────────────────┘  │    │
+  │  │                                          │    │
+  │  │  ⚠ QEMU takes over this terminal as the │    │
+  │  │    CheriBSD serial console (login: root,│    │
+  │  │    no password). Leave it running.      │    │
+  │  └────────────────────────────────────────┘    │
+  │                       ▲                         │
+  │                       │ ssh root@127.0.0.1       │
+  │                       │   -p 10222 (no password) │
+  │                       │                          │
+  │  ┌────────────────────────────────────────┐    │
+  │  │ Terminal 2 (docker exec -it             │    │
+  │  │             picasso-qemu-run bash)      │    │
+  │  │                                          │    │
+  │  │  $ ssh root@127.0.0.1 -p $SSH_PORT      │    │
+  │  │  $ scp <Juliet/CVE PoCs> root@...:      │    │
+  │  │  $ sh validation/transfer.sh ...        │    │
+  │  └────────────────────────────────────────┘    │
+  └───────────────────────────────────────────────┘
+  ```
+
+  Both terminals attach to the **same** container (`picasso-qemu-run`) —
+  Terminal 1 via `docker run`, Terminal 2 via a separate `docker exec`. There's
+  only one container; Terminal 2 just gets its own shell inside it so it can
+  reach the guest over the forwarded SSH port while Terminal 1 stays occupied
+  by the serial console.
 
 - **QEMU (native):** Follow [QEMU.md](./QEMU.md) Manual Setup, then run
   `./cheribuild.py run-riscv64-purecap --skip-update`. SSH is reachable at
@@ -351,13 +388,6 @@ Exact tick counts and runtime will vary by machine; the overhead percentages are
 </details>
 
 The overhead percentages in simulation may differ slightly from the FPGA results in the paper — the relative ordering (baseline < purecap < PICASSO) is consistent. Table 1 in the extended paper reports the hardware measurements.
-
-To rebuild the ELFs from source (e.g. after changing CoreMark source under `~/cheri/blinded-cheri-sw`):
-
-```sh
-cd /home/ubuntu/bench/coremark
-./build_coremark_for_sim.sh
-```
 
 ---
 
