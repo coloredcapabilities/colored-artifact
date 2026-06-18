@@ -5,16 +5,27 @@
 # Usage: ./run_coremark_for_sim.sh [--baseline-only | --picasso-only]
 #
 # Environment (all optional — defaults work inside the picasso Docker image):
-#   TOOOBA_ROOT   path to Toooba checkout (default: ~/cheri/Toooba)
-#   SIM_BASELINE  path to baseline simulator binary
-#   SIM_PICASSO   path to PICASSO simulator binary
-#   RUNS          number of runs to average (default: 3)
+#   TOOOBA_ROOT     path to Toooba checkout (default: ~/cheri/Toooba)
+#   BLINDED_SW_ROOT path to blinded-cheri-sw checkout (default: ~/cheri/blinded-cheri-sw)
+#   SIM_BASELINE    path to baseline simulator binary
+#   SIM_PICASSO     path to PICASSO simulator binary
+#   RUNS            number of runs to average (default: 3)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-ELF_DIR="${SCRIPT_DIR}/benchmarks/coremark"
 LOG_DIR="${SCRIPT_DIR}/logs"
+
+# Prefer ELFs built by blinded-cheri-sw's build_coremark_for_sim.sh (linked
+# with test.ld at 0x80000000, valid for elf_to_hex) over the ones bundled
+# here, which were linked with the FPGA script (p3_fpga.ld, base 0xc0000000)
+# and are out of range for simulation.
+BLINDED_SW_ROOT="${BLINDED_SW_ROOT:-$HOME/cheri/blinded-cheri-sw}"
+if [ -f "${BLINDED_SW_ROOT}/benchmarks/coremark/coremark_baseline.elf" ]; then
+    ELF_DIR="${BLINDED_SW_ROOT}/benchmarks/coremark"
+else
+    ELF_DIR="${SCRIPT_DIR}/benchmarks/coremark"
+fi
 
 TOOOBA_ROOT="${TOOOBA_ROOT:-$HOME/cheri/Toooba}"
 BUILD_DIR="${TOOOBA_ROOT}/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim"

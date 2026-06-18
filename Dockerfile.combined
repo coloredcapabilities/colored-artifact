@@ -221,5 +221,19 @@ RUN PATH="$CHERI_ROOT/validation:$PATH" \
 
 RUN sh $CHERI_ROOT/validation/build_all.sh
 
+# Wrapper scripts in bench/coremark/ that cd to blinded-cheri-sw root first
+# (the build/run scripts use relative paths so must run from the repo root) —
+# keeps the familiar ~/bench/coremark workflow while delegating to
+# blinded-cheri-sw's own scripts, whose ELFs are correctly linked for
+# simulation (test.ld, base 0x80000000).
+WORKDIR /home/$USERNAME
+RUN mkdir -p bench/coremark && \
+    printf '#!/bin/sh\ncd %s && bash build_scripts/build_coremark_for_sim.sh "$@"\n' \
+        "${BLINDED_SW_ROOT}" > bench/coremark/build_coremark_for_sim.sh && \
+    printf '#!/bin/sh\ncd %s && bash build_scripts/run_coremark_for_sim.sh "$@"\n' \
+        "${BLINDED_SW_ROOT}" > bench/coremark/run_coremark_for_sim.sh && \
+    chmod +x bench/coremark/build_coremark_for_sim.sh \
+             bench/coremark/run_coremark_for_sim.sh
+
 WORKDIR $CHERI_ROOT/cheribuild
 CMD ["/bin/bash"]
