@@ -71,7 +71,8 @@ run_sim() {
 
     printf "[*] Running %s ..." "$label" >&2
 
-    mkdir -p "${LOG_DIR}"
+    # label contains "/" (e.g. "baseline/nocap"), so create its log subdirectory
+    mkdir -p "${LOG_DIR}/$(dirname "$label")"
     # Simulator reads Mem.hex from its working directory (BUILD_DIR)
     "${ELF_TO_HEX}" "${elf}" "${BUILD_DIR}/Mem.hex" >&2
 
