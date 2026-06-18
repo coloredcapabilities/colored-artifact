@@ -199,7 +199,7 @@ RUN cd $CHERI_ROOT/cheribuild && \
 ENV BLINDED_SW_ROOT=$CHERI_ROOT/blinded-cheri-sw
 # build_coremark_for_sim.sh outputs ELFs to $BLINDED_SW_ROOT/benchmarks/coremark/
 # which is exactly where blinded-cheri-sw's run_coremark_for_sim.sh expects them
-RUN cd $CHERI_ROOT/blinded-cheri-sw && sh build_scripts/build_coremark_for_sim.sh
+RUN cd $CHERI_ROOT/blinded-cheri-sw && bash build_scripts/build_coremark_for_sim.sh
 
 # --- Build GDB, QEMU, BBL ---
 RUN cd $CHERI_ROOT/cheribuild && \
