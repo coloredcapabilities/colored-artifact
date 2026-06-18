@@ -58,7 +58,7 @@ PostgreSQL, and gRPC workloads compared to prior work.
 - [7.2 Performance Evaluations](#72-performance-evaluations) `[FPGA or Bluespec Simulator]`
   - [CoreMark](#coremark-bluespec-simulation) `[Docker]`: single-threaded overhead estimate
   - [MiBench](#mibench-bluespec-simulation) `[Docker]`: 15-benchmark suite (Table 1 / Table 3)
-  - [SPEC CPU2006](#spec-cpu2006) `[VCU118]`: 8-benchmark integer suite (≈5% g.m. overhead)
+  - [SPEC CPU2006](#spec-cpu2006) `[VCU118 or QEMU]`: 8-benchmark integer suite (≈5% g.m. overhead)
   - [Pgbench](#pgbench) `[VCU118]`: PostgreSQL throughput
   - [SQLite](#sqlite) `[VCU118]`: per-operation timing
   - [gRPC](#grpc) `[VCU118]`: RPC latency/throughput
@@ -463,6 +463,51 @@ The results for each benchmark will be output to:
 ```
 <benchmark>/<benchmark>_OUTPUT/
 ```
+
+#### Running SPEC CPU2006 on QEMU
+
+**Prerequisite:** QEMU guest running CheriBSD with SSH reachable — either the
+PICASSO guest (`SSH_PORT=10222`, see [Getting Started](#getting-started)) or
+the baseline/Cornucopia guest (`utils_script/run_baseline_qemu.sh`,
+`SSH_PORT=10223`).
+
+After building, prepare the benchmark folder on the **host** — same steps as
+the FPGA flow, unchanged:
+
+```sh
+# Optional: remove unnecessary files to reduce transfer size
+$ARTIFACT_DIR/utils_script/spec/spec_folder_reduce_folder.sh
+
+# Instrument all benchmark run scripts with timing/stat counters
+python3 $ARTIFACT_DIR/utils_script/spec/automate.py
+```
+
+Transfer the SPEC folder to the guest:
+
+```sh
+$ARTIFACT_DIR/utils_script/spec/transfer_spec_qemu.sh root@127.0.0.1 -p $SSH_PORT
+```
+
+Then run **inside the QEMU guest** — `run_all_spec_fpga.sh` is plain shell
+with nothing FPGA-specific in it (it just looks for
+`<bench>/<bench>.test.fpga.sh` and runs them), so it's reused as-is:
+
+```sh
+# Inside the guest: ssh -p $SSH_PORT root@127.0.0.1
+cd /root/SPEC/CINT2006
+sh /root/SPEC/run_all_spec_fpga.sh /root/SPEC/CINT2006
+```
+
+Or run a single benchmark individually **inside the guest**:
+
+```sh
+cd /root/SPEC/CINT2006/464.h264ref
+sh ./464.h264ref.test.fpga.sh
+```
+
+Results land in the same `<benchmark>/<benchmark>_OUTPUT/` layout; scp them
+back to the host the same way Juliet/CVE results are collected (see
+`utils_script/collect_juliet_results.sh` for the pattern).
 
 #### Analyzing SPEC CPU2006 Results
 
