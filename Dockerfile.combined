@@ -211,6 +211,7 @@ RUN cd $CHERI_ROOT/cheribuild && \
 
 # --- Artifact scripts + security pre-builds ---
 # Placed last so script edits don't invalidate the expensive build layers above
+WORKDIR $CHERI_ROOT
 COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
 COPY --chown=$USERNAME:$USERNAME ./validation   ./validation
 ENV ARTIFACT_DIR=$CHERI_ROOT
