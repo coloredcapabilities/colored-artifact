@@ -213,35 +213,26 @@ Transfer the binaries and create the stdin fixture in one step from the **host**
 
 ```sh
 # Run on the host / Docker container
-utils_script/transfer_juliet.sh root@127.0.0.1 -p $SSH_PORT
+cd ${ARTIFACT_DIR}/utils_script/transfer_juliet.sh root@127.0.0.1 -p $SSH_PORT
 ```
 
 Then SSH into the guest and run the tests (a 1s per-testcase timeout prevents
 test cases that wait on stdin from hanging indefinitely):
 
 ```sh
-# Inside the guest: ssh -p $SSH_PORT root@127.0.0.1
+# Inside the qemu: ssh -p $SSH_PORT root@127.0.0.1
 cd /root/juliet-bin
-sh juliet-run.sh 415 1s
-sh juliet-run.sh 416 1s
+sh juliet-run.sh 415 2s < /tmp/in.txt
+sh juliet-run.sh 416 2s < /tmp/in.txt
 ```
 
 Results are appended to `CWE415/good.run`, `CWE415/bad.run`,
 `CWE416/good.run`, and `CWE416/bad.run` as `<testcase-path> <exit-code>`
 pairs.
 
-#### Running on FPGA
-
 ```sh
-utils_script/transfer_juliet.sh root@<fpga-ip>
-```
-
-Then SSH in and run as above from `/root/juliet-bin`:
-
-```sh
-cd /root/juliet-bin
-sh juliet-run.sh 415 1s
-sh juliet-run.sh 416 1s
+# Run on the host / Docker container
+${ARTIFACT_DIR}/utils_script/collect_juliet_results.sh root@127.0.0.1 -p $SSH_PORT
 ```
 
 **Expected results** (per the `<TESTCASE_PATH> <exit-code>` lines in
@@ -255,6 +246,30 @@ sh juliet-run.sh 416 1s
 - **`good.run` (both CWEs):** Programs are expected to exit with code 0
   (occasional exit code 124 from the 1s `timeout` is harmless for test cases
   that wait on additional input).
+
+<details>
+<summary>Expected output</summary>
+
+```
+=== PICASSO Juliet Detection Summary ===
+
+Test set (bad.run)              Detected   Total      Rate
+------------------------------------------------------------------
+CWE415 double-free (exit 255)   818        818        100.0%
+CWE416 use-after-free (exit 162) 175       175        100.0%
+------------------------------------------------------------------
+PICASSO TOTAL                   993        993        100.0%
+
+=== False-positive check (good.run) ===
+Test set (good.run)             Clean      Total      Rate
+------------------------------------------------------------------
+CWE415 good.run                 818        818        100.0%
+CWE416 good.run                 393        393        100.0%
+
+[OK] PICASSO detected 100% of CWE-415/416 bad-case vulnerabilities.
+```
+
+</details>
 
 ### Real-World CVE Validation
 

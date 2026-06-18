@@ -44,16 +44,19 @@ for cwe in CWE415 CWE416; do
 done
 
 # count_bad <file> <expected_exit_code> -> prints "total detected"
+# Only lines whose last field is a number count as a real test result —
+# this skips stray blank/malformed lines (e.g. a trailing blank line) that
+# would otherwise be counted as an undetected test case.
 count_bad() {
     [ -f "$1" ] || { echo "0 0"; return; }
     # NB: the awk var can't be named "exp" — gawk reserves it as a builtin
-    awk -v want="$2" '{total++; if ($NF==want) d++} END{printf "%d %d\n", total+0, d+0}' "$1"
+    awk -v want="$2" '$NF ~ /^[0-9]+$/ {total++; if ($NF==want) d++} END{printf "%d %d\n", total+0, d+0}' "$1"
 }
 
 # count_good <file> -> prints "total clean"  (clean = exit 0 or 124)
 count_good() {
     [ -f "$1" ] || { echo "0 0"; return; }
-    awk '{total++; if ($NF==0 || $NF==124) c++} END{printf "%d %d\n", total+0, c+0}' "$1"
+    awk '$NF ~ /^[0-9]+$/ {total++; if ($NF==0 || $NF==124) c++} END{printf "%d %d\n", total+0, c+0}' "$1"
 }
 
 pct() {
