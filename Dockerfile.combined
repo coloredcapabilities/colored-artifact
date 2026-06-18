@@ -184,6 +184,10 @@ RUN cd $CHERI_ROOT/cheribuild && \
     ./cheribuild.py disk-image-riscv64-purecap -d --skip-update
 
 # --- Build baremetal newlib + compiler-rt (reuses LLVM already built above) ---
+# Same Ada-detection hang as gdb's configure (shared FSF toplevel config/
+# macros): `(${CC} -c conftest.adb) 2>&1` hangs under our clang-18 host
+# compiler, so short-circuit it like we do for gdb above.
+RUN sed -i 's/errors=`(${CC} -c conftest.adb) 2>&1 || echo failure`/errors="failure"/' $CHERI_ROOT/newlib/configure
 RUN cd $CHERI_ROOT/cheribuild && \
     ./cheribuild.py newlib-baremetal-riscv64 -d --skip-update && \
     ./cheribuild.py compiler-rt-builtins-baremetal-riscv64 -d --skip-update
