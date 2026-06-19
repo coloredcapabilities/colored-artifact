@@ -113,7 +113,7 @@ The security evaluation can be run on either QEMU or FPGA.
   ```sh
   # Terminal 2 — host side
   docker exec -it picasso-run bash
-  export SSH_PORT=1022
+  export SSH_PORT=10222
   ```
 
   Wait for the CheriBSD login prompt in Terminal 1 before proceeding.
