@@ -13,13 +13,12 @@ docker run -i -t picasso
 
 ## CoreMark (Quick Performance Check)
 
-CoreMark is a single-threaded benchmark that gives a fast overhead estimate. It
-requires the CHERI SDK to build the ELFs, so it's only available in the
-`picasso-combined` image (`docker build --network=host -f Dockerfile.combined
--t picasso-combined .`), which builds the ELFs during the image build.
+CoreMark is a single-threaded benchmark that gives a fast overhead estimate.
+It requires the CHERI SDK to build the ELFs, which the `picasso` image
+already includes, building the ELFs during the image build.
 
 ```sh
-# Inside the picasso-combined container
+# Inside the picasso container
 cd /home/ubuntu/bench/coremark
 ./run_coremark_for_sim.sh
 ```

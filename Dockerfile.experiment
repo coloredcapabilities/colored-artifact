@@ -94,7 +94,7 @@ COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
 
 # Note: CoreMark benchmarking requires the CHERI SDK (clang) to build ELFs
 # for simulation; this Bluespec-only image doesn't build the SDK. See
-# Dockerfile.combined for the full Bluespec + SDK + CoreMark image.
+# Dockerfile for the full Bluespec + SDK + CoreMark image.
 
 USER root
 RUN echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/no-passwd && \

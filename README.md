@@ -7,10 +7,8 @@ tions. Prior attempts to augment CHERI with temporal safety
 fall short in terms of scalability, memory overhead, and in-
 complete security guarantees due to periodical sweeps of the
 system’s memory to individually revoke stale capabilities.
-We address these limitations by introducing colored capa-
-bilities that add a controlled form of indirection to CHERI’s
-capability model. This enables provenance tracking of capa-
-bilities to their respective allocations via a hardware-managed
+We address these limitations by introducing colored capabilities that add a controlled form of indirection to CHERI’s
+capability model. This enables provenance tracking of capabilities to their respective allocations via a hardware-managed
 provenance-validity table, allowing bulk retraction of dan-
 gling pointers without needing to quarantine freed memory.
 Colored capabilities significantly reduce the frequency of
@@ -19,8 +17,7 @@ We realize colored capabilities in PICASSO, an extension of
 the CHERI-RISC-V architecture on a speculative out-of-order
 FPGA softcore (CHERI-Toooba). We also integrate colored-
 capability support into the CheriBSD OS and CHERI-enabled
-Clang/LLVM toolchain. Our evaluation shows effective miti-
-gation of use-after-free and double-free bugs across all heap-
+Clang/LLVM toolchain. Our evaluation shows effective mitigation of use-after-free and double-free bugs across all heap-
 based temporal memory-safety vulnerabilities in NIST Juliet
 test cases, real-world CVEs, only a small performance over-
 head on SPEC CPU benchmarks (≈ 5% g.m.), less latency,
@@ -60,7 +57,7 @@ PostgreSQL, and gRPC workloads compared to prior work.
   - [MiBench](#mibench-bluespec-simulation) `[Docker]`: 15-benchmark suite (Table 1 / Table 3)
   - [SPEC CPU2006](#spec-cpu2006) `[VCU118 or QEMU]`: 8-benchmark integer suite (≈5% g.m. overhead)
   - [Pgbench](#pgbench) `[VCU118]`: PostgreSQL throughput
-  - [SQLite](#sqlite) `[VCU118]`: per-operation timing
+  - [SQLite](#sqlite) `[VCU118 or QEMU]`: per-operation timing
   - [gRPC](#grpc) `[VCU118]`: RPC latency/throughput
 
 ---
@@ -87,16 +84,6 @@ docker build --network=host -f Dockerfile -t picasso .
 
 ## Environment Setup
 
-Set these variables once in your shell (host or Docker container) before
-running any commands in this README:
-
-```sh
-export ARTIFACT_DIR=~/cheri/colored-artifact   # path to this repo
-export CHERI_ROOT=~/cheri                      # cheribuild source/output root
-export CHERIBUILD=~/cheri/cheribuild           # cheribuild checkout
-export SSH_PORT=10222   # guest SSH port: 10222 for qemu_ssh_boot.py (Docker path),
-                        # or adjust if using cheribuild's run-riscv64-purecap directly
-```
 
 All benchmarks are cross-compiled for CheriBSD on the **host** (or inside the
 Docker container) using the cheribuild system. See [QEMU.md](./QEMU.md) or
@@ -109,13 +96,13 @@ running before proceeding to the evaluation sections below.
 
 The security evaluation can be run on either QEMU or FPGA.
 
-**Prerequisites — choose one:**
+**Prerequisites**
 
 - **QEMU via Docker (recommended):**
 
   ```sh
   # Terminal 1 — start the container and boot CheriBSD
-  docker run -i -t --name picasso-qemu-run picasso-qemu
+  docker run -i -t --name picasso-run picasso
   cd ~/cheri/cheribuild
   ./cheribuild.py run-riscv64-purecap --skip-update \
       --run-riscv64-purecap/ssh-forwarding-port 10222
@@ -125,7 +112,7 @@ The security evaluation can be run on either QEMU or FPGA.
 
   ```sh
   # Terminal 2 — host side
-  docker exec -it picasso-qemu-run bash
+  docker exec -it picasso-run bash
   export SSH_PORT=1022
   ```
 
@@ -134,7 +121,7 @@ The security evaluation can be run on either QEMU or FPGA.
 
  
   
-  Both terminals attach to the **same** container (`picasso-qemu-run`) —
+  Both terminals attach to the **same** container (`picasso-run`) —
   Terminal 1 via `docker run`, Terminal 2 via a separate `docker exec`. 
 
 - **QEMU (native):** Follow [QEMU.md](./QEMU.md) Manual Setup, then run
@@ -147,7 +134,7 @@ The security evaluation can be run on either QEMU or FPGA.
 
 ### Juliet Test Suite (CWE-415/416)
 
-> **Docker path:** Juliet is pre-built inside the `picasso-qemu` image — skip
+> **Docker path:** Juliet is pre-built inside the `picasso` image — skip
 > this step and go straight to [Running on QEMU](#running-on-qemu) below.
 
 For native installs, run the following on the **host** (not inside QEMU/FPGA).
@@ -173,7 +160,7 @@ Transfer the binaries and create the stdin fixture in one step from the **host**
 cd ${ARTIFACT_DIR}/utils_script/transfer_juliet.sh root@127.0.0.1 -p $SSH_PORT
 ```
 
-Then SSH into the guest and run the tests (a 1s per-testcase timeout prevents
+Then SSH into the guest and run the tests (a 2s per-testcase timeout prevents
 test cases that wait on stdin from hanging indefinitely):
 
 ```sh
@@ -234,7 +221,7 @@ We validate PICASSO against 11 real-world UAF/Double-Free CVEs from published
 benchmarks. See [`validation/README.md`](./validation/README.md) for full
 details.
 
-> **Docker path:** All 11 CVE PoCs are pre-built inside the `picasso-qemu`
+> **Docker path:** All 11 CVE PoCs are pre-built inside the `picasso`
 > image — skip `build_all.sh` and go straight to `transfer.sh`.
 
 For native installs, build the PoCs first on the **host** (not inside QEMU/FPGA):
@@ -327,11 +314,10 @@ TOTAL                            17704536        24819978        17942268       
 
 CoreMark measures single-threaded CPU performance using list processing, matrix manipulation, and state-machine workloads. Running it through the Bluespec simulators quantifies the overhead of CHERI purecap and PICASSO's colored capabilities over a baseline (non-purecap) build.
 
-**Prerequisite:** `picasso-combined` Docker image built — this image includes the CHERI SDK needed to build CoreMark ELFs, in addition to the Bluespec simulators:
+**Prerequisite:** `picasso` Docker image built (see [Getting Started](#getting-started)) — it includes the CHERI SDK needed to build CoreMark ELFs, in addition to the Bluespec simulators:
 
 ```sh
-docker build --network=host -f Dockerfile.combined -t picasso-combined .
-docker run -i -t picasso-combined
+docker run -i -t picasso
 ```
 
 Inside the container, the CoreMark ELFs are already built during the image build. To re-run:
@@ -524,6 +510,8 @@ sh $ARTIFACT_DIR/utils_script/postgress/pgbench-client.sh
 
 ### SQLite
 
+#### Running SQLite on FPGA
+
 **Prerequisite:** FPGA running CheriBSD with SSH reachable (see [FPGA.md](./FPGA.md)).
 
 On the **host**, cross-compile SQLite:
@@ -548,6 +536,56 @@ colored, and Cornucopia configurations and compare using:
 ```sh
 python3 $ARTIFACT_DIR/utils_script/sqlite/analyze_sqlite.py
 ```
+
+#### Running SQLite on QEMU (revocation-count comparison)
+
+This path measures PICASSO's revocation behavior directly against Cornucopia
+(standard CHERI purecap + MRS software quarantine/revocation) by running
+`speedtest1` against two QEMU guests side by side. `speedtest1` is already
+pre-built inside the `picasso` image — no separate cross-compile step needed.
+
+**Prerequisite:** boot both QEMU guests (each in its own terminal):
+
+```sh
+# Terminal 1 — PICASSO guest (colored capabilities)
+cd ~/cheri/cheribuild
+./cheribuild.py run-riscv64-purecap --skip-update \
+    --run-riscv64-purecap/ssh-forwarding-port 10222
+```
+
+```sh
+# Terminal 2 — baseline/Cornucopia guest (separate kernel, separate port)
+~/cheri/utils_script/run_baseline_qemu.sh
+```
+
+Then, from a **third terminal** (`docker exec -it picasso-run bash`):
+
+```sh
+cd ~/cheri/utils_script/sqlite
+
+# Against PICASSO (port 10222)
+./run_speedtest1.sh root@127.0.0.1 -p 10222
+
+# Against baseline/Cornucopia (port 10223)
+./run_speedtest1.sh root@127.0.0.1 -p 10223
+```
+
+Each run transfers `speedtest1`, runs it with `CC_DEBUG=1 /usr/bin/time -l`,
+and prints the parsed revoke counter, alloc counter, total time, and max RSS.
+Full logs are saved under `speedtest1_logs/speedtest1_<timestamp>.log` if you
+want to inspect the raw output (e.g. the `mrs[<pid>]: revoke counter: ...`
+line directly):
+
+```sh
+cat ./speedtest1_logs/speedtest1_<timestamp>.log
+```
+
+**Expected results:** PICASSO's revoke counter should be **0**, versus
+Cornucopia's revocation (**272** in our reference run). PICASSO
+should also show a substantially lower max RSS (ours: **13,268** vs
+Cornucopia's **30,708**), since it doesn't need to quarantine freed memory
+pending a sweep.
+
 ---
 
 ### gRPC

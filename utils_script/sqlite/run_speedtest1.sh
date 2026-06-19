@@ -66,9 +66,15 @@ echo "[*] Log saved to: $LOG_FILE"
 echo ""
 echo "=== Cornucopia/MRS Revocation Summary ==="
 
-revoke=$(grep -oE 'revoke counter:[[:space:]]*[0-9]+' "$LOG_FILE" | grep -oE '[0-9]+$' | tail -1)
-alloc=$(grep -oE 'alloc counter:[[:space:]]*[0-9]+' "$LOG_FILE" | grep -oE '[0-9]+$' | tail -1)
+# speedtest1 itself exits (and prints its mrs[] revoke/alloc counters) right
+# after the SQLite "TOTAL" line -- this is the FIRST mrs[] block in the log.
+# Later mrs[] blocks belong to trivial wrapper processes exiting afterward
+# (e.g. minimal_count_stats, or /usr/bin/time itself), with negligible alloc
+# counts -- so take the first match, not the last.
+revoke=$(grep -oE 'revoke counter:[[:space:]]*[0-9]+' "$LOG_FILE" | grep -oE '[0-9]+$' | head -1)
+alloc=$(grep -oE 'alloc counter:[[:space:]]*[0-9]+' "$LOG_FILE" | grep -oE '[0-9]+$' | head -1)
 total=$(grep -oE 'TOTAL\.{2,}[[:space:]]*[0-9.]+s' "$LOG_FILE" | grep -oE '[0-9.]+' | tail -1)
+max_rss=$(grep -oE '[0-9]+[[:space:]]+maximum resident set size' "$LOG_FILE" | grep -oE '^[0-9]+' | tail -1)
 
 if [ -n "$revoke" ]; then
     printf "Revoke counter: %s\n" "$revoke"
@@ -77,5 +83,6 @@ else
     echo "  (kernel needs patches/mrs_base_revoke_count.patch applied, and"
     echo "   this only prints for the Cornucopia baseline config, not PICASSO)"
 fi
-[ -n "$alloc" ] && printf "Alloc counter:  %s\n" "$alloc"
-[ -n "$total" ] && printf "Total time:     %ss\n" "$total"
+[ -n "$alloc" ]    && printf "Alloc counter:  %s\n" "$alloc"
+[ -n "$total" ]    && printf "Total time:     %ss\n" "$total"
+[ -n "$max_rss" ]  && printf "Max RSS:        %s\n" "$max_rss"
