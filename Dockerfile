@@ -1,18 +1,10 @@
 FROM ubuntu:focal
 
 ENV TZ=UTC
-
 ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    locales
-
-RUN locale-gen en_US.UTF-8
-ENV LANG=en_US.UTF-8
-ENV LANGUAGE=en_US.UTF-8
-ENV LC_ALL=en_US.UTF-8
-
-RUN apt update && apt install -y \
+    locales \
     curl \
     wget \
     git \
@@ -20,76 +12,280 @@ RUN apt update && apt install -y \
     build-essential \
     unzip \
     pkg-config \
-    tzdata \ 
+    tzdata \
     python3 \
+    python3-setuptools \
+    python3-pip \
     autoconf \
     automake \
+    libtool-bin \
     cmake \
     ninja-build \
+    flex \
+    bison \
+    texinfo \
     zlib1g-dev \
-    python3-pip \
+    libglib2.0-dev \
+    libpixman-1-dev \
+    libarchive-dev \
+    libarchive-tools \
+    libbz2-dev \
+    libzstd-dev \
+    libssl-dev \
+    libattr1-dev \
+    libcap-ng-dev \
     libtcl8.6 \
     libelf-dev \
-    sudo
+    bc \
+    time \
+    sudo \
+    openssh-client \
+    software-properties-common \
+    && locale-gen en_US.UTF-8
 
-RUN  pip3 install pyyaml
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+# Upgrade cmake (system 3.16 is too old for LLVM which requires 3.20+)
+RUN pip3 install pyyaml "cmake>=3.20"
+
+# clang-18 as default host compiler — gcc on Focal miscompiles CHERI-QEMU's
+# capability emulation causing a spurious SIGPROT on /sbin/init at boot
+RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
+    apt-get update && \
+    apt-get install -y clang-18 && \
+    rm -rf /var/lib/apt/lists/* && \
+    update-alternatives --install /usr/bin/cc  cc  /usr/bin/clang-18   100 && \
+    update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-18 100 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/clang-18   100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/clang++-18 100
+
 ARG USERNAME=ubuntu
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-RUN adduser --uid $USER_UID --disabled-password $USERNAME
+RUN adduser --uid $USER_UID --disabled-password $USERNAME && \
+    echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/no-passwd && \
+    chmod 0440 /etc/sudoers.d/no-passwd
 
 USER $USERNAME
 WORKDIR /home/$USERNAME
 
-
-# Install BlueSpec compiler (bsc)
+# BlueSpec compiler (pre-built binary)
 ADD --chown=$USERNAME:$USERNAME https://github.com/B-Lang-org/bsc/releases/download/2024.07/bsc-2024.07-ubuntu-20.04.tar.gz ./
 RUN tar xzf bsc-2024.07-ubuntu-20.04.tar.gz
-RUN ls bsc-2024.07-ubuntu-20.04
 ENV PATH="$PATH:/home/$USERNAME/bsc-2024.07-ubuntu-20.04/bin/"
-RUN echo $PATH
 
-# Install BlueSpec libraries
-RUN git clone https://github.com/B-Lang-org/bsc-contrib.git
-RUN cd bsc-contrib && git checkout 17e029843cefb3421913d630b2984a1591d2cb8c && make PREFIX=~/bsc-2024.07-ubuntu-20.04/
+RUN git clone https://github.com/B-Lang-org/bsc-contrib.git && \
+    cd bsc-contrib && git checkout 17e029843cefb3421913d630b2984a1591d2cb8c && \
+    make PREFIX=~/bsc-2024.07-ubuntu-20.04/
 
-WORKDIR /home/$USERNAME/
 COPY --chown=$USERNAME:$USERNAME ./patches ./patches
 
-### Let's build Toooba core for baseline 
-WORKDIR /home/$USERNAME/cheri
-RUN git clone https://github.com/CTSRD-CHERI/Toooba.git &&  cd Toooba && git checkout a8299cfc01896 && git submodule update --init --recursive
-ENV TOOOBA_ROOT=/home/$USERNAME/cheri/Toooba/
-RUN sed -i 's/if len (argv \[j:\]) != 0 and isdecimal (argv \[j\]):/if len (argv [j:]) != 0 and argv[j].isdecimal():/; s/if len(argv\[j:\]) != 0 and isdecimal (argv\[j\]):/if len(argv[j:]) != 0 and argv[j].isdecimal():/' ${TOOOBA_ROOT}/Tests/Run_benchmarks.py
+ENV CHERI_ROOT=/home/$USERNAME/cheri
+RUN mkdir -p $CHERI_ROOT
+WORKDIR $CHERI_ROOT
+
+# SSH key baked into CheriBSD disk image for non-interactive SSH access
+RUN ssh-keygen -t ed25519 -N "" -f $HOME/.ssh/id_ed25519 && \
+    mkdir -p extra-files/root/.ssh && \
+    cp $HOME/.ssh/id_ed25519.pub extra-files/root/.ssh/authorized_keys && \
+    chmod 700 extra-files/root extra-files/root/.ssh && \
+    chmod 600 extra-files/root/.ssh/authorized_keys
+
+# --- Clone all sources ---
+
+RUN git clone https://github.com/CTSRD-CHERI/Toooba.git && \
+    cd Toooba && git checkout a8299cfc01896 && git submodule update --init --recursive
+
+# cheribuild (pinned: before cheri-tgot-tls flag our LLVM doesn't support)
+RUN git init -q cheribuild && cd cheribuild && \
+    git remote add origin https://github.com/CTSRD-CHERI/cheribuild.git && \
+    git fetch -q --depth 1 origin c0cef78dcbaa5041ced3b9604a4730783fccc73c && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/cheribuild_colored.diff
+
+# QEMU with colored capability support
+RUN git init -q qemu && cd qemu && \
+    git remote add origin https://github.com/CTSRD-CHERI/qemu.git && \
+    git fetch -q --depth 1 origin 967e7a86d8d7d1b0a730640354269afebaa0c3ed && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/qemu_colored.diff
+
+# LLVM with colored capability support
+RUN git init -q llvm-project && cd llvm-project && \
+    git remote add origin https://github.com/CTSRD-CHERI/llvm-project.git && \
+    git fetch -q --depth 1 origin 578ea4f7ef67d589f0ca7d10ec9e383333567421 && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/llvm_colored.diff
+
+# CheriBSD with colored capability support
+RUN git init -q cheribsd && cd cheribsd && \
+    git remote add origin https://github.com/CTSRD-CHERI/cheribsd.git && \
+    git fetch -q --depth 1 origin 485c1c8195563d2be65ed2eb1bf7d8bc06eb1a64 && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/cheribsd_colored.diff
+
+# GDB (pinned: cheri-14 HEAD requires C++17 our Clang 15 doesn't provide)
+RUN git init -q gdb && cd gdb && \
+    git remote add origin https://github.com/CTSRD-CHERI/gdb.git && \
+    git fetch -q --depth 1 origin 6b6284a9a2bbbe50548b7d1271e6984c26b12c24 && \
+    git checkout -q FETCH_HEAD && \
+    sed -i 's/errors=`(${CC} -c conftest.adb) 2>&1 || echo failure`/errors="failure"/' configure
+
+# newlib (baremetal, for CoreMark ELF compilation)
+RUN git clone https://github.com/CTSRD-CHERI/newlib.git && \
+    cd newlib && git checkout a982bc9
+
+# blinded-cheri-sw: coremark source + build/run scripts; FPGA=0 selects test.ld (0x80000000)
+RUN git clone https://github.com/blindedcapabilities/blinded-cheri-sw.git
+
+# samba required by cheribuild's "run" target for QEMU host-share
+RUN sudo apt-get update && sudo apt-get install -y samba && sudo rm -rf /var/lib/apt/lists/*
+
+# --- Build Toooba Bluespec simulators ---
+
+ENV TOOOBA_ROOT=$CHERI_ROOT/Toooba
+RUN sed -i 's/if len (argv \[j:\]) != 0 and isdecimal (argv \[j\]):/if len (argv [j:]) != 0 and argv[j].isdecimal():/; \
+            s/if len(argv\[j:\]) != 0 and isdecimal (argv\[j\]):/if len(argv[j:]) != 0 and argv[j].isdecimal():/' \
+    ${TOOOBA_ROOT}/Tests/Run_benchmarks.py
 
 WORKDIR ${TOOOBA_ROOT}/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim
-RUN make compile && make simulator
-RUN cp exe_HW_sim exe_HW_sim_baseline
-RUN cp exe_HW_sim.so exe_HW_sim_baseline.so
-ENV SIM_BASELINE=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim_baseline
 
-### Let's build Toooba core for picasso
-RUN cd ${TOOOBA_ROOT} &&  git apply  /home/$USERNAME/patches/toooba_colored.patch && cd ${TOOOBA_ROOT}/libs/cheri-cap-lib/ && git apply  /home/$USERNAME/patches/cheri-cap-lib_colored.patch
-RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv
-RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/lib/DTlb.bsv
-RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/lib/SplitLSQ.bsv
+RUN make compile && make simulator
+RUN cp exe_HW_sim exe_HW_sim_baseline && cp exe_HW_sim.so exe_HW_sim_baseline.so
+ENV SIM_BASELINE=$CHERI_ROOT/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim_baseline
+
+RUN cd ${TOOOBA_ROOT} && \
+    git apply --exclude='Tests/isa/coremark.elf' /home/$USERNAME/patches/toooba_colored.patch && \
+    cd ${TOOOBA_ROOT}/libs/cheri-cap-lib/ && \
+    git apply /home/$USERNAME/patches/cheri-cap-lib_colored.patch
+RUN sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/RV64G_OOO/MemExePipeline.bsv && \
+    sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/lib/DTlb.bsv && \
+    sed -i 's/Bool verbose = True;/Bool verbose = False;/' ../../src_Core/RISCY_OOO/procs/lib/SplitLSQ.bsv
 RUN make compile && make simulator
 RUN make -C ${TOOOBA_ROOT}/Tests/elf_to_hex
-ENV SIM_PICASSO=/home/$USERNAME/cheri/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim
+ENV SIM_PICASSO=$CHERI_ROOT/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim
+# SIM_BLACKOUT is the name used by blinded-cheri-sw's run script
+ENV SIM_BLACKOUT=$CHERI_ROOT/Toooba/builds/RV64ACDFIMSUxCHERI_Toooba_bluesim/exe_HW_sim
 
-### Setup benchmark scripts
-WORKDIR /home/$USERNAME/
+# --- Benchmark scripts ---
+
+WORKDIR /home/$USERNAME
 RUN mkdir -p bench/bench_log
-COPY --chown=$USERNAME:$USERNAME ./utils_script/mibench/run_mibench.sh ./bench/
+COPY --chown=$USERNAME:$USERNAME ./utils_script/mibench/run_mibench.sh        ./bench/
 COPY --chown=$USERNAME:$USERNAME ./utils_script/mibench/compare_benchmarks.sh ./bench/
 RUN chmod +x ./bench/run_mibench.sh ./bench/compare_benchmarks.sh
 
-USER root
-RUN echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/no-passwd && \
-    chmod 0440 /etc/sudoers.d/no-passwd
-USER $USERNAME
+# --- Build CHERI SDK + CheriBSD disk image ---
+# disk-image -d also builds LLVM/SDK which is reused by newlib/coremark steps below
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py disk-image-riscv64-purecap -d --skip-update
 
-WORKDIR /home/$USERNAME/
+# --- Build baremetal newlib + compiler-rt (reuses LLVM already built above) ---
+# Same Ada-detection hang as gdb's configure (shared FSF toplevel config/
+# macros): `(${CC} -c conftest.adb) 2>&1` hangs under our clang-18 host
+# compiler, so short-circuit it like we do for gdb above.
+RUN sed -i 's/errors=`(${CC} -c conftest.adb) 2>&1 || echo failure`/errors="failure"/' $CHERI_ROOT/newlib/configure
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py newlib-baremetal-riscv64 -d --skip-update && \
+    ./cheribuild.py compiler-rt-builtins-baremetal-riscv64 -d --skip-update
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py newlib-baremetal-riscv64-purecap -d --skip-update && \
+    ./cheribuild.py compiler-rt-builtins-baremetal-riscv64-purecap -d --skip-update
 
+# --- Build CoreMark ELFs for simulation ---
+ENV BLINDED_SW_ROOT=$CHERI_ROOT/blinded-cheri-sw
+# build_coremark_for_sim.sh outputs ELFs to $BLINDED_SW_ROOT/benchmarks/coremark/
+# which is exactly where blinded-cheri-sw's run_coremark_for_sim.sh expects them
+RUN cd $CHERI_ROOT/blinded-cheri-sw && bash build_scripts/build_coremark_for_sim.sh
+
+# --- Build GDB, QEMU, BBL ---
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py gdb-riscv64-hybrid-for-purecap-rootfs -d --skip-update
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py qemu -d --skip-update
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py bbl-baremetal-riscv64-purecap --skip-update
+
+# --- Artifact scripts + security pre-builds ---
+# Placed last so script edits don't invalidate the expensive build layers above
+WORKDIR $CHERI_ROOT
+ENV ARTIFACT_DIR=$CHERI_ROOT
+
+# Juliet/CVE builds only need juliet_install.sh itself + validation/ (for ccc
+# on PATH) — NOT the rest of utils_script/. Copying just these keeps edits to
+# unrelated utils_script/ subdirs (coremark, mibench, sqlite, grpc, ...) from
+# invalidating the cache for these expensive build steps.
+COPY --chown=$USERNAME:$USERNAME ./utils_script/juliet_install.sh ./utils_script/juliet_install.sh
+COPY --chown=$USERNAME:$USERNAME ./validation ./validation
+
+RUN PATH="$CHERI_ROOT/validation:$PATH" \
+    bash $CHERI_ROOT/utils_script/juliet_install.sh
+
+RUN sh $CHERI_ROOT/validation/build_all.sh
+
+# Wrapper scripts in bench/coremark/ that cd to blinded-cheri-sw root first
+# (the build/run scripts use relative paths so must run from the repo root) —
+# keeps the familiar ~/bench/coremark workflow while delegating to
+# blinded-cheri-sw's own scripts, whose ELFs are correctly linked for
+# simulation (test.ld, base 0x80000000).
+WORKDIR /home/$USERNAME
+RUN mkdir -p bench/coremark && \
+    printf '#!/bin/sh\ncd %s && bash build_scripts/build_coremark_for_sim.sh "$@"\n' \
+        "${BLINDED_SW_ROOT}" > bench/coremark/build_coremark_for_sim.sh && \
+    printf '#!/bin/sh\ncd %s && bash build_scripts/run_coremark_for_sim.sh "$@"\n' \
+        "${BLINDED_SW_ROOT}" > bench/coremark/run_coremark_for_sim.sh && \
+    chmod +x bench/coremark/build_coremark_for_sim.sh \
+             bench/coremark/run_coremark_for_sim.sh
+
+# Full utils_script/ tree (mibench, coremark, sqlite, grpc, spec, postgres,
+# etc.) for evaluators — placed after the expensive Juliet/CVE builds above
+# so edits to these subdirs don't invalidate that cache.
+WORKDIR $CHERI_ROOT
+COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
+
+# Overwrite blinded-cheri-sw's run_coremark_for_sim.sh with our version, which
+# adds the PICASSO-vs-CHERI-Toooba-baseline comparison (cross-core delta) that
+# upstream doesn't compute — upstream only reports the purecap tax within each
+# simulator individually. See utils_script/coremark/run_coremark_for_sim.sh.
+COPY --chown=$USERNAME:$USERNAME ./utils_script/coremark/run_coremark_for_sim.sh \
+    $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
+RUN chmod +x $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
+
+# Pre-build SQLite + speedtest1 so utils_script/sqlite/run_speedtest1.sh can
+# skip straight to transferring/running against a live guest (--no-build).
+# speedtest1 isn't part of cheribuild's default sqlite build target, so it
+# must be built explicitly from within the configured build directory.
+RUN sudo apt-get install -y tclsh
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py sqlite-riscv64-purecap -d --skip-update
+RUN cd $CHERI_ROOT/build/sqlite-riscv64-purecap-build && make speedtest1
+
+# --- Baseline (Cornucopia) CheriBSD kernel, for revocation-count comparison ---
+# Separate CheriBSD checkout: same pinned commit as the PICASSO cheribsd
+# above, but with only mrs_base_revoke_count.patch applied (no
+# cheribsd_colored.diff) -- standard CHERI purecap + Cornucopia software
+# revocation, so it actually exercises MRS's quarantine/revoke path and
+# prints "revoke counter"/"alloc counter" (see utils_script/sqlite/run_speedtest1.sh).
+RUN git init -q cheribsd-baseline && cd cheribsd-baseline && \
+    git remote add origin https://github.com/CTSRD-CHERI/cheribsd.git && \
+    git fetch -q --depth 1 origin 485c1c8195563d2be65ed2eb1bf7d8bc06eb1a64 && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/mrs_base_revoke_count.patch
+
+# Build into separate build/install/image paths so this doesn't clobber the
+# PICASSO kernel/disk image built above. Verified via --dump-configuration
+# that these overrides correctly propagate to the dependent kernel target too.
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py disk-image-riscv64-purecap -d --skip-update \
+        --cheribsd-riscv64-purecap/source-directory=$CHERI_ROOT/cheribsd-baseline \
+        --cheribsd-riscv64-purecap/build-directory=$CHERI_ROOT/build/cheribsd-baseline-riscv64-purecap-build \
+        --cheribsd-riscv64-purecap/install-directory=$CHERI_ROOT/output/rootfs-baseline-riscv64-purecap \
+        --cheribsd-mfs-root-kernel-riscv64-purecap/build-directory=$CHERI_ROOT/build/cheribsd-baseline-riscv64-purecap-build \
+        --cheribsd-mfs-root-kernel-riscv64-purecap/install-directory=$CHERI_ROOT/output/rootfs-baseline-riscv64-purecap \
+        --disk-image-riscv64-purecap/path=$CHERI_ROOT/output/cheribsd-baseline-riscv64-purecap.img
+
+WORKDIR $CHERI_ROOT/cheribuild
 CMD ["/bin/bash"]

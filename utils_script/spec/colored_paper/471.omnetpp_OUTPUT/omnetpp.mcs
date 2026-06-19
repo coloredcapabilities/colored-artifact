@@ -1,0 +1,37 @@
+===== 471.omnetpp -- default =====
+cycles:         408852597330
+instructions:   371285735863
+time:           4088076604
+
+redirect:       7412535761
+branch:         45283055997
+jal:            3675039375
+jalr:           20891697321
+trap:           11579194
+
+load_wait:      196905413916
+cap_load_tag_set: 66326878536
+cap_store_tag_set: 32759686284
+
+itlb_miss_wait: 1219956313
+icache_load:    262029089104
+icache_load_miss: 1400919695
+icache_load_miss_wait: 12414994805
+
+dtlb_access:    153837681312
+dtlb_miss:      8992297836
+dtlb_miss_wait: 50714244961
+dcache_load:    97740784253
+dcache_load_miss: 5893626964
+dcache_load_miss_wait: 51406771089
+dcache_store:   45863609148
+dcache_store_miss: 2555736250
+
+llcache_load_miss: 590147995
+llcache_load_miss_wait: 30480945770
+
+tagcache_load:  977292996
+tagcache_load_miss: 2256961
+tagcache_store: 123799402
+tagcache_store_miss: 1940642
+tagcache_evict: 3034996

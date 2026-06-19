@@ -1,0 +1,11 @@
+mrs[157]: revoke counter: 0
+mrs[157]: alloc counter: 10
+mrs[160]: revoke counter: 16
+mrs[160]: alloc counter: 170126
+mrs[159]: revoke counter: 0
+mrs[159]: alloc counter: 11
+mrs[158]: revoke counter: 0
+mrs[158]: alloc counter: 10
+/tmp/spec2006-riscv64-purecap-build/External_fpga/SPEC/CINT2006/456.hmmer/../../../../tools/fpcmp-target: Comparison failed, textual difference between 'l' and '.'
+mrs[161]: revoke counter: 0
+mrs[161]: alloc counter: 4

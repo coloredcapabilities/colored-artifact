@@ -1,0 +1,81 @@
+[PEXPECT\PROMPT]>time -l minimal_count_stats ./401.bzip2 data/train/input/byoudoin.jpg 5
+spec_init
+Loading Input Data
+Duplicating 691514 bytes
+Duplicating 1383028 bytes
+Duplicating 2476824 bytes
+Input data 5242880 bytes in length
+Compressing Input Data, level 5
+Compressed data 5189497 bytes in length
+Uncompressing Data
+Uncompressed data 5242880 bytes in length
+Uncompressed data compared correctly
+Compressing Input Data, level 7
+Compressed data 5170636 bytes in length
+Uncompressing Data
+Uncompressed data 5242880 bytes in length
+Uncompressed data compared correctly
+Compressing Input Data, level 9
+Compressed data 4554254 bytes in length
+Uncompressing Data
+Uncompressed data 5242880 bytes in length
+Uncompressed data compared correctly
+Tested 5MB buffer: OK!
+mrs[75]: revoke counter: 2
+mrs[75]: alloc counter: 29
+===== 401.bzip2 -- default =====
+cycles:         25592472632
+instructions:   31756160078
+time:           255904473
+
+redirect:       152231862
+branch:         3756570456
+jal:            202577519
+jalr:           67687272
+trap:           703599
+
+load_wait:      11423911773
+cap_load_tag_set: 594020646
+cap_store_tag_set: 181387499
+
+itlb_miss_wait: 812866
+icache_load:    18320423744
+icache_load_miss: 8814673
+icache_load_miss_wait: 274884671
+
+dtlb_access:    9248669599
+dtlb_miss:      159039033
+dtlb_miss_wait: 1887470940
+dcache_load:    5821440735
+dcache_load_miss: 132062329
+dcache_load_miss_wait: 3803765928
+dcache_store:   3166189897
+dcache_store_miss: 98549122
+
+llcache_load_miss: 101834723
+llcache_load_miss_wait: 7025558155
+
+tagcache_load:  151511951
+tagcache_load_miss: 2451
+tagcache_store: 46972525
+tagcache_store_miss: 716
+tagcache_evict: 2408
+mrs[74]: revoke counter: 0
+mrs[74]: alloc counter: 11
+     1025.52 real      1000.03 user         7.71 sys
+     39572  maximum resident set size
+        72  average shared memory size
+        18  average unshared data size
+       128  average unshared stack size
+     10279  page reclaims
+         1  page faults
+         0  swaps
+         1  block input operations
+         0  block output operations
+         0  messages sent
+         0  messages received
+         0  signals received
+        22  voluntary context switches
+     37344  involuntary context switches
+mrs[73]: revoke counter: 0
+mrs[73]: alloc counter: 10

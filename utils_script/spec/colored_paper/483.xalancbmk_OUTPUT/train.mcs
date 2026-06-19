@@ -1,0 +1,37 @@
+===== 483.xalancbmk -- default =====
+cycles:         440414087584
+instructions:   305836404479
+time:           4403666527
+
+redirect:       10900237218
+branch:         32929536053
+jal:            2812792691
+jalr:           25391764429
+trap:           12334656
+
+load_wait:      163355632310
+cap_load_tag_set: 63956279554
+cap_store_tag_set: 31311172051
+
+itlb_miss_wait: 2398109240
+icache_load:    252888260308
+icache_load_miss: 3415587903
+icache_load_miss_wait: 29166652958
+
+dtlb_access:    130967393743
+dtlb_miss:      6701489773
+dtlb_miss_wait: 75897187024
+dcache_load:    85171023951
+dcache_load_miss: 3530767470
+dcache_load_miss_wait: 44372414895
+dcache_store:   38736016631
+dcache_store_miss: 1722053645
+
+llcache_load_miss: 829336002
+llcache_load_miss_wait: 63615440797
+
+tagcache_load:  1284114227
+tagcache_load_miss: 25279537
+tagcache_store: 36000704
+tagcache_store_miss: 3220356
+tagcache_evict: 6434928

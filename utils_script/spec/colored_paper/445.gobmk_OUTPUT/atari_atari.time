@@ -1,0 +1,15 @@
+      376.76 real       360.23 user        10.04 sys
+     55588  maximum resident set size
+       678  average shared memory size
+      5570  average unshared data size
+       128  average unshared stack size
+     13393  page reclaims
+         0  page faults
+         0  swaps
+         0  block input operations
+         0  block output operations
+         0  messages sent
+         0  messages received
+         0  signals received
+        36  voluntary context switches
+     13421  involuntary context switches

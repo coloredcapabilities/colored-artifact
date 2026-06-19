@@ -30,7 +30,8 @@ TCEOF
 
     mkdir -p build && cd build
     cmake .. -DCMAKE_TOOLCHAIN_FILE=/tmp/cheri-toolchain.cmake \
-        -DCMAKE_BUILD_TYPE=Release
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     make -j"$(nproc)"
     cd /tmp
     mv libzip-1.2.0 "${SCRIPT_DIR}/libzip"

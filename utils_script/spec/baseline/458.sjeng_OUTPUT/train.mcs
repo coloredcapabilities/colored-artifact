@@ -1,0 +1,37 @@
+===== 458.sjeng -- default =====
+cycles:         791207799095
+instructions:   739993192141
+time:           7911415819
+
+redirect:       18082928914
+branch:         87392270267
+jal:            10106657297
+jalr:           13103380903
+trap:           23549875
+
+load_wait:      254281092201
+cap_load_tag_set: 69597373394
+cap_store_tag_set: 16064130495
+
+itlb_miss_wait: 183083516
+icache_load:    570506182276
+icache_load_miss: 3888586405
+icache_load_miss_wait: 33062977029
+
+dtlb_access:    235317627316
+dtlb_miss:      3807974194
+dtlb_miss_wait: 103457538149
+dcache_load:    178636803943
+dcache_load_miss: 2636012702
+dcache_load_miss_wait: 36834926078
+dcache_store:   47873745453
+dcache_store_miss: 1409305211
+
+llcache_load_miss: 1247982590
+llcache_load_miss_wait: 69487029903
+
+tagcache_load:  1499551595
+tagcache_load_miss: 232076
+tagcache_store: 220208833
+tagcache_store_miss: 56429
+tagcache_evict: 126756

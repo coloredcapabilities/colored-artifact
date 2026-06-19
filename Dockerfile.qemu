@@ -1,0 +1,207 @@
+FROM ubuntu:focal
+
+ENV TZ=UTC
+ARG DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y \
+    locales \
+    curl \
+    wget \
+    git \
+    vim \
+    build-essential \
+    unzip \
+    pkg-config \
+    tzdata \
+    python3 \
+    python3-setuptools \
+    python3-pip \
+    autoconf \
+    automake \
+    libtool-bin \
+    cmake \
+    ninja-build \
+    flex \
+    bison \
+    texinfo \
+    zlib1g-dev \
+    libglib2.0-dev \
+    libpixman-1-dev \
+    libarchive-dev \
+    libarchive-tools \
+    libbz2-dev \
+    libzstd-dev \
+    libssl-dev \
+    libattr1-dev \
+    libcap-ng-dev \
+    bc \
+    time \
+    sudo \
+    openssh-client \
+    software-properties-common \
+    && locale-gen en_US.UTF-8
+
+ENV LANG=en_US.UTF-8
+ENV LANGUAGE=en_US.UTF-8
+ENV LC_ALL=en_US.UTF-8
+
+
+RUN pip3 install pyyaml "cmake>=3.20"
+
+# Use clang as the host compiler for native builds (e.g. cheribuild's "qemu"
+# target). gcc 9/12 on Focal miscompile CHERI-QEMU's capability emulation,
+# causing a spurious SIGPROT ("In-address space security exception") on
+# /sbin/init at boot; clang produces a working qemu-system-riscv64cheri.
+RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
+    apt-get update && \
+    apt-get install -y clang-18 && \
+    rm -rf /var/lib/apt/lists/* && \
+    update-alternatives --install /usr/bin/cc cc /usr/bin/clang-18 100 && \
+    update-alternatives --install /usr/bin/c++ c++ /usr/bin/clang++-18 100 && \
+    update-alternatives --install /usr/bin/gcc gcc /usr/bin/clang-18 100 && \
+    update-alternatives --install /usr/bin/g++ g++ /usr/bin/clang++-18 100
+
+ARG USERNAME=ubuntu
+ARG USER_UID=1000
+ARG USER_GID=$USER_UID
+
+RUN adduser --uid $USER_UID --disabled-password $USERNAME && \
+    echo "$USERNAME ALL=(ALL) NOPASSWD: ALL" > /etc/sudoers.d/no-passwd && \
+    chmod 0440 /etc/sudoers.d/no-passwd
+
+USER $USERNAME
+WORKDIR /home/$USERNAME
+
+COPY --chown=$USERNAME:$USERNAME ./patches ./patches
+
+# Source tree layout expected by cheribuild
+ENV CHERI_ROOT=/home/$USERNAME/cheri
+RUN mkdir -p $CHERI_ROOT
+WORKDIR $CHERI_ROOT
+
+# Bake an SSH key into the disk image's /root/.ssh/authorized_keys via
+# cheribuild's extra-files overlay, so the first `disk-image-riscv64-purecap`
+# build (part of `run-riscv64-purecap -d`) already has non-interactive SSH
+# access set up -- see QEMU.md "Reproducible SSH access". This is a
+# throwaway keypair generated at image-build time, not meant to be reused
+# outside this container.
+RUN ssh-keygen -t ed25519 -N "" -f $HOME/.ssh/id_ed25519 && \
+    mkdir -p extra-files/root/.ssh && \
+    cp $HOME/.ssh/id_ed25519.pub extra-files/root/.ssh/authorized_keys && \
+    chmod 700 extra-files/root extra-files/root/.ssh && \
+    chmod 600 extra-files/root/.ssh/authorized_keys
+
+# cheribuild itself (pinned before the cheri-tgot-tls/new-TLS-ABI cfg flag was
+# introduced, since our pinned LLVM commit does not support that driver flag)
+RUN git init -q cheribuild && cd cheribuild && \
+    git remote add origin https://github.com/CTSRD-CHERI/cheribuild.git && \
+    git fetch -q --depth 1 origin c0cef78dcbaa5041ced3b9604a4730783fccc73c && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/cheribuild_colored.diff
+
+# QEMU (colored capability support)
+RUN git init -q qemu && cd qemu && \
+    git remote add origin https://github.com/CTSRD-CHERI/qemu.git && \
+    git fetch -q --depth 1 origin 967e7a86d8d7d1b0a730640354269afebaa0c3ed && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/qemu_colored.diff
+
+# LLVM (colored capability support - adds __builtin_cheri_cc_set_type etc.)
+RUN git init -q llvm-project && cd llvm-project && \
+    git remote add origin https://github.com/CTSRD-CHERI/llvm-project.git && \
+    git fetch -q --depth 1 origin 578ea4f7ef67d589f0ca7d10ec9e383333567421 && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/llvm_colored.diff
+
+# CheriBSD (colored capability support)
+RUN git init -q cheribsd && cd cheribsd && \
+    git remote add origin https://github.com/CTSRD-CHERI/cheribsd.git && \
+    git fetch -q --depth 1 origin 485c1c8195563d2be65ed2eb1bf7d8bc06eb1a64 && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/cheribsd_colored.diff
+
+# GDB (pinned before cheri-14 HEAD started requiring C++17 std::void_t/
+# conjunction/negation in gdbsupport/enum-flags.h, which our pinned Clang 15
+# does not provide by default for the cross target)
+RUN git init -q gdb && cd gdb && \
+    git remote add origin https://github.com/CTSRD-CHERI/gdb.git && \
+    git fetch -q --depth 1 origin 6b6284a9a2bbbe50548b7d1271e6984c26b12c24 && \
+    git checkout -q FETCH_HEAD && \
+    sed -i 's/errors=`(${CC} -c conftest.adb) 2>&1 || echo failure`/errors="failure"/' configure
+
+# samba (smbd) is required by cheribuild's "run" target for QEMU host-share
+# (mount_smbfs) support. Installed as its own layer at the end so that it
+# doesn't invalidate the source-checkout layers above.
+RUN sudo apt-get update && sudo apt-get install -y samba && sudo rm -rf /var/lib/apt/lists/*
+
+# Build everything (QEMU, LLVM/SDK, CheriBSD, disk image) during docker build
+# so evaluators don't have to wait. --skip-update uses the already-cloned repos
+# above. Split into two RUN steps so Docker can cache each layer independently.
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py disk-image-riscv64-purecap -d --skip-update
+
+# Build GDB separately (Ada check is already patched above in the gdb clone step)
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py gdb-riscv64-hybrid-for-purecap-rootfs -d --skip-update
+
+
+# Copy artifact scripts — placed after the expensive build layers so that
+# changes to utils_script/ or validation/ don't invalidate the build cache.
+# Files land at $CHERI_ROOT/utils_script/ and $CHERI_ROOT/validation/;
+# ARTIFACT_DIR is set to $CHERI_ROOT so $ARTIFACT_DIR/utils_script/ etc. work.
+COPY --chown=$USERNAME:$USERNAME ./utils_script ./utils_script
+COPY --chown=$USERNAME:$USERNAME ./validation ./validation
+ENV ARTIFACT_DIR=$CHERI_ROOT
+
+# Pre-build Juliet test suite (CWE-415/416) so evaluators can scp directly
+# without running juliet_install.sh first.
+# ccc lives in validation/ (copied above); juliet_install.sh uses BASH_SOURCE
+# so must be run with bash, not sh.
+RUN PATH="$CHERI_ROOT/validation:$PATH" \
+    bash $CHERI_ROOT/utils_script/juliet_install.sh
+
+# Pre-build all 11 CVE validation PoCs so evaluators can skip build_all.sh
+# and go straight to transfer.sh. ccc finds the SDK at ~/cheri/output/sdk.
+RUN sh $CHERI_ROOT/validation/build_all.sh
+
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py qemu -d --skip-update
+
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py bbl-baremetal-riscv64-purecap --skip-update
+
+# Pre-build SQLite + speedtest1 so utils_script/sqlite/run_speedtest1.sh can
+# skip straight to transferring/running against a live guest (--no-build).
+# speedtest1 isn't part of cheribuild's default sqlite build target, so it
+# must be built explicitly from within the configured build directory.
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py sqlite-riscv64-purecap -d --skip-update
+RUN cd $CHERI_ROOT/build/sqlite-riscv64-purecap-build && make speedtest1
+
+# --- Baseline (Cornucopia) CheriBSD kernel, for revocation-count comparison ---
+# Separate CheriBSD checkout: same pinned commit as the PICASSO cheribsd
+# above, but with only mrs_base_revoke_count.patch applied (no
+# cheribsd_colored.diff) -- standard CHERI purecap + Cornucopia software
+# revocation, so it actually exercises MRS's quarantine/revoke path and
+# prints "revoke counter"/"alloc counter" (see utils_script/sqlite/run_speedtest1.sh).
+RUN git init -q cheribsd-baseline && cd cheribsd-baseline && \
+    git remote add origin https://github.com/CTSRD-CHERI/cheribsd.git && \
+    git fetch -q --depth 1 origin 485c1c8195563d2be65ed2eb1bf7d8bc06eb1a64 && \
+    git checkout -q FETCH_HEAD && \
+    git apply /home/$USERNAME/patches/mrs_base_revoke_count.patch
+
+# Build into separate build/install/image paths so this doesn't clobber the
+# PICASSO kernel/disk image built above. Verified via --dump-configuration
+# that these overrides correctly propagate to the dependent kernel target too.
+RUN cd $CHERI_ROOT/cheribuild && \
+    ./cheribuild.py disk-image-riscv64-purecap -d --skip-update \
+        --cheribsd-riscv64-purecap/source-directory=$CHERI_ROOT/cheribsd-baseline \
+        --cheribsd-riscv64-purecap/build-directory=$CHERI_ROOT/build/cheribsd-baseline-riscv64-purecap-build \
+        --cheribsd-riscv64-purecap/install-directory=$CHERI_ROOT/output/rootfs-baseline-riscv64-purecap \
+        --cheribsd-mfs-root-kernel-riscv64-purecap/build-directory=$CHERI_ROOT/build/cheribsd-baseline-riscv64-purecap-build \
+        --cheribsd-mfs-root-kernel-riscv64-purecap/install-directory=$CHERI_ROOT/output/rootfs-baseline-riscv64-purecap \
+        --disk-image-riscv64-purecap/path=$CHERI_ROOT/output/cheribsd-baseline-riscv64-purecap.img
+
+WORKDIR $CHERI_ROOT/cheribuild
+
+CMD ["/bin/bash"]

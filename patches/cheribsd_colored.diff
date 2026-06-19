@@ -1,5 +1,5 @@
 diff --git a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
-index b3c9a3cc64b..7ac57ccfaff 100644
+index b3c9a3cc64b2..7ac57ccfaff1 100644
 --- a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
 +++ b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_inlines_c.h
 @@ -50,10 +50,12 @@ unbound_ptr(tsdn_t *tsdn, void *ptr) {
@@ -16,7 +16,7 @@ index b3c9a3cc64b..7ac57ccfaff 100644
  	rtree_ctx = tsdn_rtree_ctx(tsdn, &rtree_ctx_fallback);
  	extent = rtree_extent_read(tsdn, &extents_rtree,
 diff --git a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
-index eb860df02b6..dc5ddd8acc4 100644
+index eb860df02b6c..dc5ddd8acc48 100644
 --- a/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
 +++ b/contrib/jemalloc/include/jemalloc/internal/jemalloc_internal_macros.h
 @@ -121,7 +121,7 @@ JEMALLOC_DIAGNOSTIC_DISABLE_SPURIOUS
@@ -29,7 +29,7 @@ index eb860df02b6..dc5ddd8acc4 100644
  
  /*
 diff --git a/contrib/jemalloc/src/jemalloc.c b/contrib/jemalloc/src/jemalloc.c
-index fa056015ee7..8a7ae295c58 100644
+index fa056015ee7b..8a7ae295c580 100644
 --- a/contrib/jemalloc/src/jemalloc.c
 +++ b/contrib/jemalloc/src/jemalloc.c
 @@ -3815,6 +3815,7 @@ je_malloc_underlying_allocation(void *ptr) {
@@ -41,7 +41,7 @@ index fa056015ee7..8a7ae295c58 100644
  	}
  
 diff --git a/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td b/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
-index a836227e189..2c77ff32ca9 100644
+index a836227e1895..2c77ff32ca9e 100644
 --- a/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
 +++ b/contrib/llvm-project/llvm/lib/Target/RISCV/RISCVSystemOperands.td
 @@ -295,6 +295,8 @@ foreach i = 3...31 in
@@ -54,7 +54,7 @@ index a836227e189..2c77ff32ca9 100644
  // Machine Counter Setup
  //===----------------------------------------------------------------------===//
 diff --git a/include/stdlib.h b/include/stdlib.h
-index b802a17e4de..d939d0f52cc 100644
+index b802a17e4de7..d939d0f52cc0 100644
 --- a/include/stdlib.h
 +++ b/include/stdlib.h
 @@ -98,6 +98,8 @@ char	*getenv(const char *);
@@ -67,7 +67,7 @@ index b802a17e4de..d939d0f52cc 100644
  	    __deprecated1("use malloc_revoke_quarantine_force_flush() instead");
  int	 malloc_revoke_quarantine_force_flush(void);
 diff --git a/lib/libc/gen/tls_malloc.c b/lib/libc/gen/tls_malloc.c
-index 667acdb900d..56e76bce698 100644
+index 667acdb900d4..56e76bce698a 100644
 --- a/lib/libc/gen/tls_malloc.c
 +++ b/lib/libc/gen/tls_malloc.c
 @@ -1,6 +1,11 @@
@@ -352,7 +352,7 @@ index 667acdb900d..56e76bce698 100644
  
  	mask = CHERI_REPRESENTABLE_ALIGNMENT_MASK(nbytes);
 diff --git a/lib/libc/stdlib/Makefile.inc b/lib/libc/stdlib/Makefile.inc
-index 38a4be042b1..70e18d065a7 100644
+index 38a4be042b1b..70e18d065a73 100644
 --- a/lib/libc/stdlib/Makefile.inc
 +++ b/lib/libc/stdlib/Makefile.inc
 @@ -13,7 +13,7 @@ MISRCS+=C99_Exit.c a64l.c abort.c abs.c atexit.c atof.c atoi.c atol.c atoll.c \
@@ -366,7 +366,7 @@ index 38a4be042b1..70e18d065a7 100644
  
 diff --git a/lib/libc/stdlib/_unrhdr.h b/lib/libc/stdlib/_unrhdr.h
 new file mode 100644
-index 00000000000..13edf40fcbe
+index 000000000000..13edf40fcbe3
 --- /dev/null
 +++ b/lib/libc/stdlib/_unrhdr.h
 @@ -0,0 +1,51 @@
@@ -422,7 +422,7 @@ index 00000000000..13edf40fcbe
 +
 +#endif
 diff --git a/lib/libc/stdlib/malloc/Symbol.map b/lib/libc/stdlib/malloc/Symbol.map
-index b9a1f8251e1..506f75388db 100644
+index b9a1f8251e15..506f75388db9 100644
 --- a/lib/libc/stdlib/malloc/Symbol.map
 +++ b/lib/libc/stdlib/malloc/Symbol.map
 @@ -2,6 +2,7 @@ FBSD_1.0 {
@@ -434,7 +434,7 @@ index b9a1f8251e1..506f75388db 100644
  	calloc;
  	realloc;
 diff --git a/lib/libc/stdlib/malloc/malloc_revoke.c b/lib/libc/stdlib/malloc/malloc_revoke.c
-index 9326f12a834..9469fb4047e 100644
+index 9326f12a8344..9469fb4047eb 100644
 --- a/lib/libc/stdlib/malloc/malloc_revoke.c
 +++ b/lib/libc/stdlib/malloc/malloc_revoke.c
 @@ -50,3 +50,7 @@ malloc_is_revoking(void)
@@ -447,7 +447,7 @@ index 9326f12a834..9469fb4047e 100644
 +}
 \ No newline at end of file
 diff --git a/lib/libc/stdlib/malloc/mrs/mrs.3 b/lib/libc/stdlib/malloc/mrs/mrs.3
-index e76cd749c5f..85ac9df5c92 100644
+index e76cd749c5fb..85ac9df5c921 100644
 --- a/lib/libc/stdlib/malloc/mrs/mrs.3
 +++ b/lib/libc/stdlib/malloc/mrs/mrs.3
 @@ -173,6 +173,7 @@ interface which takes a capability passed to
@@ -459,7 +459,7 @@ index e76cd749c5f..85ac9df5c92 100644
  .Dt CHERI_PERM_SW_VMEM
  permission.
 diff --git a/lib/libc/stdlib/malloc/mrs/mrs.c b/lib/libc/stdlib/malloc/mrs/mrs.c
-index cf1f129248e..8445ddb8661 100644
+index cf1f129248ed..8445ddb86617 100644
 --- a/lib/libc/stdlib/malloc/mrs/mrs.c
 +++ b/lib/libc/stdlib/malloc/mrs/mrs.c
 @@ -1,10 +1,15 @@
@@ -1484,7 +1484,7 @@ index cf1f129248e..8445ddb8661 100644
  		mrs_printf("mrs_offload_thread: application quarantine's (unvalidated) size "
 diff --git a/lib/libc/stdlib/u_subr_unit.c b/lib/libc/stdlib/u_subr_unit.c
 new file mode 100644
-index 00000000000..81acead157b
+index 000000000000..81acead157b1
 --- /dev/null
 +++ b/lib/libc/stdlib/u_subr_unit.c
 @@ -0,0 +1,1484 @@
@@ -2974,7 +2974,7 @@ index 00000000000..81acead157b
 +#endif
 diff --git a/lib/libc/stdlib/u_subr_unit.h b/lib/libc/stdlib/u_subr_unit.h
 new file mode 100644
-index 00000000000..be717cd85e3
+index 000000000000..be717cd85e39
 --- /dev/null
 +++ b/lib/libc/stdlib/u_subr_unit.h
 @@ -0,0 +1,46 @@
@@ -3026,7 +3026,7 @@ index 00000000000..be717cd85e3
 +void copy_unrhdr(struct unrhdr *old_uh, struct unrhdr *new_uh);
 \ No newline at end of file
 diff --git a/lib/libmalloc_simple/Makefile b/lib/libmalloc_simple/Makefile
-index 3d39499e076..3d375cc2770 100644
+index 3d39499e076a..3d375cc27707 100644
 --- a/lib/libmalloc_simple/Makefile
 +++ b/lib/libmalloc_simple/Makefile
 @@ -5,7 +5,10 @@
@@ -3042,7 +3042,7 @@ index 3d39499e076..3d375cc2770 100644
  .if ${MACHINE_ABI:Mpurecap} && ${MK_CHERI_CAPREVOKE} == "yes"
  CFLAGS+=	-DCAPREVOKE
 diff --git a/lib/libmalloc_simple/malloc.c b/lib/libmalloc_simple/malloc.c
-index 2fce0b08453..66d762a0983 100644
+index 2fce0b084531..66d762a0983d 100644
 --- a/lib/libmalloc_simple/malloc.c
 +++ b/lib/libmalloc_simple/malloc.c
 @@ -2,6 +2,10 @@
@@ -3333,7 +3333,7 @@ index 2fce0b08453..66d762a0983 100644
  
  	if (cp == NULL)
 diff --git a/sys/arm64/arm64/cheri_revoke_machdep.c b/sys/arm64/arm64/cheri_revoke_machdep.c
-index 3b029dd5c93..38015fcba30 100644
+index 3b029dd5c93a..38015fcba301 100644
 --- a/sys/arm64/arm64/cheri_revoke_machdep.c
 +++ b/sys/arm64/arm64/cheri_revoke_machdep.c
 @@ -8,6 +8,10 @@
@@ -3357,7 +3357,7 @@ index 3b029dd5c93..38015fcba30 100644
  		disable_user_memory_access();
  		curthread->td_pcb->pcb_onfault = prev_onfault;
 diff --git a/sys/arm64/include/cherireg.h b/sys/arm64/include/cherireg.h
-index 6caca2a9dc8..f6dd20bace2 100644
+index 6caca2a9dc88..f6dd20bace21 100644
 --- a/sys/arm64/include/cherireg.h
 +++ b/sys/arm64/include/cherireg.h
 @@ -128,7 +128,7 @@
@@ -3370,7 +3370,7 @@ index 6caca2a9dc8..f6dd20bace2 100644
  #define	CHERI_PERMS_USERSPACE_SEALCAP					\
  	(CHERI_PERM_GLOBAL | CHERI_PERM_SEAL | CHERI_PERM_UNSEAL)
 diff --git a/sys/cheri/revoke.h b/sys/cheri/revoke.h
-index fe7cf80d275..bba55f8b007 100644
+index fe7cf80d275e..bba55f8b0079 100644
 --- a/sys/cheri/revoke.h
 +++ b/sys/cheri/revoke.h
 @@ -5,6 +5,10 @@
@@ -3407,7 +3407,7 @@ index fe7cf80d275..bba55f8b007 100644
  #ifndef _KERNEL
  /*
 diff --git a/sys/conf/files b/sys/conf/files
-index f52b7a95220..0dbedc5f24e 100644
+index f52b7a952209..0dbedc5f24e5 100644
 --- a/sys/conf/files
 +++ b/sys/conf/files
 @@ -396,6 +396,7 @@ cheri/cheri_tags.c			optional cpu_cheri
@@ -3419,7 +3419,7 @@ index f52b7a95220..0dbedc5f24e 100644
  # dtrace specific
  cddl/contrib/opensolaris/uts/common/dtrace/dtrace.c	optional dtrace compile-with "${DTRACE_C}" \
 diff --git a/sys/kern/kern_cheri_revoke.c b/sys/kern/kern_cheri_revoke.c
-index c36258b617d..39680ff0ecc 100644
+index c36258b617d5..39680ff0ecc2 100644
 --- a/sys/kern/kern_cheri_revoke.c
 +++ b/sys/kern/kern_cheri_revoke.c
 @@ -3,6 +3,10 @@
@@ -3537,7 +3537,7 @@ index c36258b617d..39680ff0ecc 100644
  		return (EINVAL);
  	}
 diff --git a/sys/kern/kern_exec.c b/sys/kern/kern_exec.c
-index 8deeb6a71dc..62fd6d9e111 100644
+index 8deeb6a71dc5..62fd6d9e111d 100644
 --- a/sys/kern/kern_exec.c
 +++ b/sys/kern/kern_exec.c
 @@ -3,6 +3,10 @@
@@ -3594,7 +3594,7 @@ index 8deeb6a71dc..62fd6d9e111 100644
  		if (error != KERN_SUCCESS)
  			return (vm_mmap_to_errno(error));
 diff --git a/sys/kern/kern_exit.c b/sys/kern/kern_exit.c
-index dc083c5817c..b22aaff6573 100644
+index dc083c5817c1..b22aaff6573d 100644
 --- a/sys/kern/kern_exit.c
 +++ b/sys/kern/kern_exit.c
 @@ -93,6 +93,10 @@
@@ -3632,7 +3632,7 @@ index dc083c5817c..b22aaff6573 100644
  	 * Reparent all children processes:
  	 * - traced ones to the original parent (or init if we are that parent)
 diff --git a/sys/kern/kern_fork.c b/sys/kern/kern_fork.c
-index dcdf27727b1..4d4ed9f9171 100644
+index dcdf27727b13..4d4ed9f91713 100644
 --- a/sys/kern/kern_fork.c
 +++ b/sys/kern/kern_fork.c
 @@ -82,6 +82,11 @@
@@ -3657,7 +3657,7 @@ index dcdf27727b1..4d4ed9f9171 100644
  	struct ucred *cred;
  	struct file *fp_procdesc;
 diff --git a/sys/kern/subr_unit.c b/sys/kern/subr_unit.c
-index 9551a51e2e8..b7af031fd4e 100644
+index 9551a51e2e85..b7af031fd4e0 100644
 --- a/sys/kern/subr_unit.c
 +++ b/sys/kern/subr_unit.c
 @@ -351,7 +351,7 @@ free_iter_unr(void *handle)
@@ -3688,7 +3688,7 @@ index 9551a51e2e8..b7af031fd4e 100644
  
  #endif
 diff --git a/sys/riscv/include/cherireg.h b/sys/riscv/include/cherireg.h
-index a8435becc5f..2c949ef3421 100644
+index a8435becc5f9..2c949ef3421e 100644
 --- a/sys/riscv/include/cherireg.h
 +++ b/sys/riscv/include/cherireg.h
 @@ -16,6 +16,10 @@
@@ -3739,7 +3739,7 @@ index a8435becc5f..2c949ef3421 100644
  #define	CHERI_OTYPE_ISKERN(x)	(((x) & CHERI_OTYPE_KERN_FLAG) != 0)
  #define	CHERI_OTYPE_ISUSER(x)	(!(CHERI_OTYPE_ISKERN(x)))
 diff --git a/sys/riscv/include/encoding.h b/sys/riscv/include/encoding.h
-index c9ef8a985df..550d00b2bc5 100644
+index c9ef8a985dfd..550d00b2bc5f 100644
 --- a/sys/riscv/include/encoding.h
 +++ b/sys/riscv/include/encoding.h
 @@ -740,6 +740,7 @@
@@ -3761,7 +3761,7 @@ index c9ef8a985df..550d00b2bc5 100644
  #ifdef DECLARE_CAUSE
  DECLARE_CAUSE("misaligned fetch", CAUSE_MISALIGNED_FETCH)
 diff --git a/sys/riscv/include/frame.h b/sys/riscv/include/frame.h
-index b7a88e01e38..ac2ae10df86 100644
+index b7a88e01e38a..ac2ae10df860 100644
 --- a/sys/riscv/include/frame.h
 +++ b/sys/riscv/include/frame.h
 @@ -67,6 +67,8 @@ struct trapframe {
@@ -3774,7 +3774,7 @@ index b7a88e01e38..ac2ae10df86 100644
  
  #ifdef _KERNEL
 diff --git a/sys/riscv/include/pcb.h b/sys/riscv/include/pcb.h
-index 3b5bca1e5c3..ee379c7dcb8 100644
+index 3b5bca1e5c36..ee379c7dcb8b 100644
 --- a/sys/riscv/include/pcb.h
 +++ b/sys/riscv/include/pcb.h
 @@ -53,6 +53,7 @@ struct pcb {
@@ -3786,7 +3786,7 @@ index 3b5bca1e5c3..ee379c7dcb8 100644
  	uint64_t	pcb_fcsr;	/* Floating point control reg */
  	uint64_t	pcb_fpflags;	/* Floating point flags */
 diff --git a/sys/riscv/include/reg.h b/sys/riscv/include/reg.h
-index 5883e24c51d..350fb31d34b 100644
+index 5883e24c51d2..350fb31d34ba 100644
 --- a/sys/riscv/include/reg.h
 +++ b/sys/riscv/include/reg.h
 @@ -10,6 +10,10 @@
@@ -3818,7 +3818,7 @@ index 5883e24c51d..350fb31d34b 100644
  #endif
  
 diff --git a/sys/riscv/riscv/cheri_revoke_machdep.c b/sys/riscv/riscv/cheri_revoke_machdep.c
-index b9cac80062b..01a735dbb3a 100644
+index b9cac80062b3..01a735dbb3a1 100644
 --- a/sys/riscv/riscv/cheri_revoke_machdep.c
 +++ b/sys/riscv/riscv/cheri_revoke_machdep.c
 @@ -8,6 +8,10 @@
@@ -3933,7 +3933,7 @@ index b9cac80062b..01a735dbb3a 100644
  
  		/* One dirty answer is as good as any other; stop eary */
 diff --git a/sys/riscv/riscv/cheri_revoke_machdep_tests.c b/sys/riscv/riscv/cheri_revoke_machdep_tests.c
-index cb9bf070c7b..a0e3795a8e0 100644
+index cb9bf070c7b3..a0e3795a8e0d 100644
 --- a/sys/riscv/riscv/cheri_revoke_machdep_tests.c
 +++ b/sys/riscv/riscv/cheri_revoke_machdep_tests.c
 @@ -8,6 +8,10 @@
@@ -4147,7 +4147,7 @@ index cb9bf070c7b..a0e3795a8e0 100644
  
  	default:
 diff --git a/sys/riscv/riscv/elf_machdep.c b/sys/riscv/riscv/elf_machdep.c
-index 12b880f66de..5659134c578 100644
+index 12b880f66def..5659134c578e 100644
 --- a/sys/riscv/riscv/elf_machdep.c
 +++ b/sys/riscv/riscv/elf_machdep.c
 @@ -12,6 +12,10 @@
@@ -4230,7 +4230,7 @@ index 12b880f66de..5659134c578 100644
  
  }
 diff --git a/sys/riscv/riscv/exception.S b/sys/riscv/riscv/exception.S
-index d87a6d3e592..ddfc3303f98 100644
+index d87a6d3e5920..ddfc3303f989 100644
 --- a/sys/riscv/riscv/exception.S
 +++ b/sys/riscv/riscv/exception.S
 @@ -206,6 +206,11 @@
@@ -4261,7 +4261,7 @@ index d87a6d3e592..ddfc3303f98 100644
  
  	clc	ct0, (TF_T + 0 * 16)(csp)
 diff --git a/sys/riscv/riscv/genassym.c b/sys/riscv/riscv/genassym.c
-index 6164719194b..e5365b46452 100644
+index 6164719194b4..e5365b46452e 100644
 --- a/sys/riscv/riscv/genassym.c
 +++ b/sys/riscv/riscv/genassym.c
 @@ -72,6 +72,9 @@ ASSYM(PCB_S, offsetof(struct pcb, pcb_s));
@@ -4284,7 +4284,7 @@ index 6164719194b..e5365b46452 100644
  #if __has_feature(capabilities) && !defined(__CHERI_PURE_CAPABILITY__)
  ASSYM(KF_DDC, offsetof(struct kernframe, kf_ddc));
 diff --git a/sys/riscv/riscv/swtch.S b/sys/riscv/riscv/swtch.S
-index fcd4f79d7e7..8aaca1326e0 100644
+index fcd4f79d7e7b..8aaca1326e05 100644
 --- a/sys/riscv/riscv/swtch.S
 +++ b/sys/riscv/riscv/swtch.S
 @@ -319,6 +319,11 @@ ENTRY(cpu_throw)
@@ -4359,7 +4359,7 @@ index fcd4f79d7e7..8aaca1326e0 100644
  	/* Store ra, sp and the callee-saved registers */
  	sd	ra, (PCB_RA)(a0)
 diff --git a/sys/riscv/riscv/trap.c b/sys/riscv/riscv/trap.c
-index 46da39fa7ef..7b9f4a04339 100644
+index 46da39fa7eff..7b9f4a04339f 100644
 --- a/sys/riscv/riscv/trap.c
 +++ b/sys/riscv/riscv/trap.c
 @@ -10,6 +10,10 @@
@@ -4417,7 +4417,7 @@ index 46da39fa7ef..7b9f4a04339 100644
  #ifdef CHERI_CAPREVOKE
  skip_pmap:
 diff --git a/sys/riscv/riscv/uio_machdep.c b/sys/riscv/riscv/uio_machdep.c
-index d59b08afcea..0d4add758a9 100644
+index d59b08afcea0..0d4add758a95 100644
 --- a/sys/riscv/riscv/uio_machdep.c
 +++ b/sys/riscv/riscv/uio_machdep.c
 @@ -142,6 +142,7 @@ uiomove_fromphys(vm_page_t ma[], vm_offset_t offset, int n, struct uio *uio)
@@ -4429,7 +4429,7 @@ index d59b08afcea..0d4add758a9 100644
  		uio->uio_resid -= cnt;
  		uio->uio_offset += cnt;
 diff --git a/sys/sys/proc.h b/sys/sys/proc.h
-index 914f030cd95..6fe6c48b0c9 100644
+index 914f030cd95b..6fe6c48b0c9d 100644
 --- a/sys/sys/proc.h
 +++ b/sys/sys/proc.h
 @@ -9,6 +9,10 @@
@@ -4470,7 +4470,7 @@ index 914f030cd95..6fe6c48b0c9 100644
  
  #define	p_session	p_pgrp->pg_session
 diff --git a/sys/sys/sysent.h b/sys/sys/sysent.h
-index 63be29543f0..12dadb5bf87 100644
+index 63be29543f07..12dadb5bf87c 100644
 --- a/sys/sys/sysent.h
 +++ b/sys/sys/sysent.h
 @@ -4,6 +4,10 @@
@@ -4495,7 +4495,7 @@ index 63be29543f0..12dadb5bf87 100644
  	size_t		sv_psstringssz;	/* PS_STRINGS size */
 diff --git a/sys/vm/cc_revoke.c b/sys/vm/cc_revoke.c
 new file mode 100644
-index 00000000000..236be276035
+index 000000000000..236be2760353
 --- /dev/null
 +++ b/sys/vm/cc_revoke.c
 @@ -0,0 +1,149 @@
@@ -4651,7 +4651,7 @@ index 00000000000..236be276035
 \ No newline at end of file
 diff --git a/sys/vm/cc_revoke.h b/sys/vm/cc_revoke.h
 new file mode 100644
-index 00000000000..c8cba70970a
+index 000000000000..c8cba70970a6
 --- /dev/null
 +++ b/sys/vm/cc_revoke.h
 @@ -0,0 +1,35 @@
@@ -4692,7 +4692,7 @@ index 00000000000..c8cba70970a
 +#endif
 \ No newline at end of file
 diff --git a/sys/vm/vm_cheri_revoke.c b/sys/vm/vm_cheri_revoke.c
-index 8686b6b8fac..a979a67c2e3 100644
+index 8686b6b8facf..a979a67c2e37 100644
 --- a/sys/vm/vm_cheri_revoke.c
 +++ b/sys/vm/vm_cheri_revoke.c
 @@ -3,6 +3,10 @@
@@ -4885,7 +4885,7 @@ index 8686b6b8fac..a979a67c2e3 100644
  }
  
 diff --git a/sys/vm/vm_cheri_revoke.h b/sys/vm/vm_cheri_revoke.h
-index 038e20767d4..f3995a6ad64 100644
+index 038e20767d4a..f3995a6ad64c 100644
 --- a/sys/vm/vm_cheri_revoke.h
 +++ b/sys/vm/vm_cheri_revoke.h
 @@ -4,6 +4,10 @@
@@ -4918,7 +4918,7 @@ index 038e20767d4..f3995a6ad64 100644
      struct cheri_revoke_info_page * __capability *);
  
 diff --git a/sys/vm/vm_fault.c b/sys/vm/vm_fault.c
-index e78f977a22c..7979b60bcb0 100644
+index e78f977a22cf..7979b60bcb05 100644
 --- a/sys/vm/vm_fault.c
 +++ b/sys/vm/vm_fault.c
 @@ -100,6 +100,7 @@
@@ -4941,7 +4941,7 @@ index e78f977a22c..7979b60bcb0 100644
  	 * Find the backing store object and offset into it to begin the
  	 * search.
 diff --git a/sys/vm/vm_map.h b/sys/vm/vm_map.h
-index 9a09599fec2..2979861cbd3 100644
+index 9a09599fec2b..2979861cbd3f 100644
 --- a/sys/vm/vm_map.h
 +++ b/sys/vm/vm_map.h
 @@ -7,6 +7,10 @@
@@ -4969,7 +4969,7 @@ index 9a09599fec2..2979861cbd3 100644
  struct cheri_revoke_stats;
 diff --git a/tests_programs/ccc b/tests_programs/ccc
 new file mode 100755
-index 00000000000..3053ac44876
+index 000000000000..3053ac448769
 --- /dev/null
 +++ b/tests_programs/ccc
 @@ -0,0 +1,177 @@
@@ -5152,7 +5152,7 @@ index 00000000000..3053ac44876
 +run "$prog" "$@"
 diff --git a/tests_programs/context_switching.c b/tests_programs/context_switching.c
 new file mode 100644
-index 00000000000..cb546c3f62f
+index 000000000000..cb546c3f62f6
 --- /dev/null
 +++ b/tests_programs/context_switching.c
 @@ -0,0 +1,25 @@
@@ -5182,13 +5182,9 @@ index 00000000000..cb546c3f62f
 +	printf("hello world: %d\n", cc_read());
 +}
 \ No newline at end of file
-diff --git a/tests_programs/mass_unr_revoke b/tests_programs/mass_unr_revoke
-new file mode 100755
-index 00000000000..935bf104a14
-Binary files /dev/null and b/tests_programs/mass_unr_revoke differ
 diff --git a/tests_programs/mass_unr_revoke.c b/tests_programs/mass_unr_revoke.c
 new file mode 100644
-index 00000000000..7bc852fd965
+index 000000000000..7bc852fd9655
 --- /dev/null
 +++ b/tests_programs/mass_unr_revoke.c
 @@ -0,0 +1,19 @@
@@ -5213,7 +5209,7 @@ index 00000000000..7bc852fd965
 +}
 diff --git a/tests_programs/microbench.c b/tests_programs/microbench.c
 new file mode 100644
-index 00000000000..35087d241ee
+index 000000000000..35087d241eec
 --- /dev/null
 +++ b/tests_programs/microbench.c
 @@ -0,0 +1,32 @@
@@ -5252,7 +5248,7 @@ index 00000000000..35087d241ee
 \ No newline at end of file
 diff --git a/tests_programs/otype_test.c b/tests_programs/otype_test.c
 new file mode 100644
-index 00000000000..841a741807a
+index 000000000000..841a741807a1
 --- /dev/null
 +++ b/tests_programs/otype_test.c
 @@ -0,0 +1,36 @@
@@ -5295,7 +5291,7 @@ index 00000000000..841a741807a
 \ No newline at end of file
 diff --git a/tests_programs/test_bitmap.c b/tests_programs/test_bitmap.c
 new file mode 100644
-index 00000000000..a4a1146ff91
+index 000000000000..a4a1146ff91c
 --- /dev/null
 +++ b/tests_programs/test_bitmap.c
 @@ -0,0 +1,60 @@

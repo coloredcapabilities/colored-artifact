@@ -1,0 +1,37 @@
+===== 456.hmmer -- default =====
+cycles:         316500378989
+instructions:   401841683091
+time:           3164667208
+
+redirect:       5138516731
+branch:         51201965730
+jal:            7631531629
+jalr:           684208274
+trap:           8550718
+
+load_wait:      119690148162
+cap_load_tag_set: 12139039733
+cap_store_tag_set: 1470235278
+
+itlb_miss_wait: 13355057
+icache_load:    264375751145
+icache_load_miss: 110009890
+icache_load_miss_wait: 2081523971
+
+dtlb_access:    149677020087
+dtlb_miss:      158928821
+dtlb_miss_wait: 8840213736
+dcache_load:    100108377908
+dcache_load_miss: 864472247
+dcache_load_miss_wait: 8660541682
+dcache_store:   43008455319
+dcache_store_miss: 934901970
+
+llcache_load_miss: 333557743
+llcache_load_miss_wait: 23956574544
+
+tagcache_load:  587149633
+tagcache_load_miss: 49017
+tagcache_store: 222596958
+tagcache_store_miss: 11280
+tagcache_evict: 30216

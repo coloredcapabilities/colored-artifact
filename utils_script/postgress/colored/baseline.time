@@ -1,0 +1,18 @@
+cat /tmp/postgres/stats/postgres_20260123_182605.time
+     2565.72 real      1705.31 user       180.40 sys
+     67536  maximum resident set size
+      6738  average shared memory size
+       994  average unshared data size
+       128  average unshared stack size
+     28844  page reclaims
+         0  page faults
+         0  swaps
+         0  block input operations
+         0  block output operations
+     42183  messages sent
+     42188  messages received
+      1207  signals received
+     59476  voluntary context switches
+    187124  involuntary context switches
+mrs[5481]: revoke counter: 0
+mrs[5481]: alloc counter: 19

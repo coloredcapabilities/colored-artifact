@@ -1,0 +1,11 @@
+mrs[305]: revoke counter: 0
+mrs[305]: alloc counter: 10
+mrs[308]: revoke counter: 0
+mrs[308]: alloc counter: 170126
+mrs[307]: revoke counter: 0
+mrs[307]: alloc counter: 11
+mrs[306]: revoke counter: 0
+mrs[306]: alloc counter: 10
+/tmp/spec2006-riscv64-purecap-build/External_fpga/SPEC/CINT2006/456.hmmer/../../../../tools/fpcmp-target: Comparison failed, unexpected end of one of the files
+mrs[309]: revoke counter: 0
+mrs[309]: alloc counter: 3

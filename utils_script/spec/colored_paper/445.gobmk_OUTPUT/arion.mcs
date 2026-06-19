@@ -1,0 +1,37 @@
+===== 445.gobmk -- default =====
+cycles:         45303322474
+instructions:   37459926085
+time:           452984909
+
+redirect:       976256218
+branch:         4662970659
+jal:            417384137
+jalr:           568065904
+trap:           1268371
+
+load_wait:      15587679212
+cap_load_tag_set: 4409883623
+cap_store_tag_set: 2380367863
+
+itlb_miss_wait: 13002833
+icache_load:    29658536407
+icache_load_miss: 359083761
+icache_load_miss_wait: 3146999286
+
+dtlb_access:    14519858770
+dtlb_miss:      110190047
+dtlb_miss_wait: 3136108197
+dcache_load:    9584735533
+dcache_load_miss: 189160918
+dcache_load_miss_wait: 2879728577
+dcache_store:   4304058767
+dcache_store_miss: 180456110
+
+llcache_load_miss: 62923241
+llcache_load_miss_wait: 5221850344
+
+tagcache_load:  109500715
+tagcache_load_miss: 2851993
+tagcache_store: 26963105
+tagcache_store_miss: 1329157
+tagcache_evict: 2780182
