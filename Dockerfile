@@ -38,6 +38,7 @@ RUN apt-get update && apt-get install -y \
     libelf-dev \
     bc \
     time \
+    tclsh \ 
     sudo \
     openssh-client \
     software-properties-common \
@@ -258,7 +259,6 @@ RUN chmod +x $BLINDED_SW_ROOT/build_scripts/run_coremark_for_sim.sh
 # skip straight to transferring/running against a live guest (--no-build).
 # speedtest1 isn't part of cheribuild's default sqlite build target, so it
 # must be built explicitly from within the configured build directory.
-RUN sudo apt-get install -y tclsh
 RUN cd $CHERI_ROOT/cheribuild && \
     ./cheribuild.py sqlite-riscv64-purecap -d --skip-update
 RUN cd $CHERI_ROOT/build/sqlite-riscv64-purecap-build && make speedtest1

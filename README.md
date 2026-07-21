@@ -350,6 +350,8 @@ To build SPEC CPU2006 for CheriBSD:
 
 ```sh
 cd $CHERIBUILD
+
+./cheribuild.py llvm-test-suite-riscv64-purecap -d // it might fail, but no worries, it will have enough things to build spec benchmark 
 ./cheribuild.py spec2006-riscv64-purecap --spec2006/iso-path /path/to/cpu2006-1.2.iso
 ```
 
