@@ -1,7 +1,7 @@
 #!/bin/sh
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BINARY="${SCRIPT_DIR}/mjs/mjs-bin"
-ARGS="-f ${SCRIPT_DIR}/poc.js"
+ARGS="-f ${SCRIPT_DIR}/poc2.js"
 
 echo "=== mjs issue-78: Use-After-Free ==="
 echo "UAF at skip_whitespaces (mjs.c:5790)"

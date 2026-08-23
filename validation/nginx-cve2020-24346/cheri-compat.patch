@@ -1,14 +1,365 @@
+diff --git a/src/njs.h b/src/njs.h
+index 82a570fd..1e4e76e0 100644
+--- a/src/njs.h
++++ b/src/njs.h
+@@ -22,6 +22,12 @@
+ #include <njs_sprintf.h>
+ 
+ 
++/*
++ * njs_index_t must equal uintptr_t because the bytecode stream stores operand
++ * indexes as native words and the interpreter reads them back by casting pc to
++ * njs_vmcode_*_t structs.  Changing this size breaks the generator/interpreter
++ * agreement on instruction sizes.  On CHERI purecap uintptr_t = 16 bytes.
++ */
+ typedef uintptr_t                   njs_index_t;
+ typedef struct njs_vm_s             njs_vm_t;
+ typedef union  njs_value_s          njs_value_t;
+@@ -37,13 +43,17 @@ typedef void *                      njs_external_proto_t;
+  */
+ 
+ typedef struct {
++#if (NJS_PTR_SIZE == 16)
++    uint64_t                        filler[4];
++#else
+     uint64_t                        filler[2];
++#endif
+ } njs_opaque_value_t;
+ 
+ 
+ /* sizeof(njs_value_t) is 16 bytes. */
+ #define njs_argument(args, n)                                                 \
+-    (njs_value_t *) ((u_char *) args + (n) * 16)
++    (njs_value_t *) ((u_char *) args + (n) * sizeof(njs_opaque_value_t))
+ 
+ 
+ extern const njs_value_t            njs_value_undefined;
+diff --git a/src/njs_clang.h b/src/njs_clang.h
+index a2d60e9e..77335496 100644
+--- a/src/njs_clang.h
++++ b/src/njs_clang.h
+@@ -217,11 +217,11 @@ njs_leading_zeros64(uint64_t x)
+ 
+ 
+ #define njs_align_ptr(p, a)                                                   \
+-    (u_char *) (((uintptr_t) (p) + ((uintptr_t) (a) - 1))                     \
+-                 & ~((uintptr_t) (a) - 1))
++    (u_char *) (((uintptr_t) (p) + ((size_t) (a) - 1))                        \
++                 & ~((size_t) (a) - 1))
+ 
+ #define njs_trunc_ptr(p, a)                                                   \
+-    (u_char *) ((uintptr_t) (p) & ~((uintptr_t) (a) - 1))
++    (u_char *) ((uintptr_t) (p) & ~((size_t) (a) - 1))
+ 
+ 
+ #endif /* _NJS_CLANG_H_INCLUDED_ */
+diff --git a/src/njs_lvlhsh.c b/src/njs_lvlhsh.c
+index 8443a08c..f1d15a20 100644
+--- a/src/njs_lvlhsh.c
++++ b/src/njs_lvlhsh.c
+@@ -77,7 +77,7 @@
+ 
+ 
+ #define njs_lvlhsh_bucket(proto, bkt)                                         \
+-    (uint32_t *) ((uintptr_t) bkt & ~(uintptr_t) proto->bucket_mask)
++    (njs_ptr_t *) ((uintptr_t) bkt & ~(uintptr_t) proto->bucket_mask)
+ 
+ 
+ #define njs_lvlhsh_bucket_entries(proto, bkt)                                 \
+@@ -95,32 +95,9 @@
+ #define njs_lvlhsh_next_bucket(proto, bkt)                                    \
+     ((void **) &bkt[proto->bucket_end])
+ 
+-#if (NJS_64BIT)
+ 
+ #define njs_lvlhsh_valid_entry(e)                                             \
+-    (((e)[0] | (e)[1]) != 0)
+-
+-
+-#define njs_lvlhsh_entry_value(e)                                             \
+-    (void *) (((uintptr_t) (e)[1] << 32) + (e)[0])
+-
+-
+-#define njs_lvlhsh_set_entry_value(e, n)                                      \
+-    (e)[0] = (uint32_t)  (uintptr_t) n;                                       \
+-    (e)[1] = (uint32_t) ((uintptr_t) n >> 32)
+-
+-
+-#define njs_lvlhsh_entry_key(e)                                               \
+-    (e)[2]
+-
+-
+-#define njs_lvlhsh_set_entry_key(e, n)                                        \
+-    (e)[2] = n
+-
+-#else
+-
+-#define njs_lvlhsh_valid_entry(e)                                             \
+-    ((e)[0] != 0)
++    ((e) != 0)
+ 
+ 
+ #define njs_lvlhsh_entry_value(e)                                             \
+@@ -128,17 +105,15 @@
+ 
+ 
+ #define njs_lvlhsh_set_entry_value(e, n)                                      \
+-    (e)[0] = (uint32_t) n
++    (e)[0] = (uintptr_t) (n)
+ 
+ 
+ #define njs_lvlhsh_entry_key(e)                                               \
+-    (e)[1]
++    (uint32_t) (e)[1]
+ 
+ 
+ #define njs_lvlhsh_set_entry_key(e, n)                                        \
+-    (e)[1] = n
+-
+-#endif
++    (e)[1] = (uint32_t) (n)
+ 
+ 
+ #define NJS_LVLHSH_BUCKET_DONE  ((void *) -1)
+@@ -153,7 +128,7 @@ static njs_int_t njs_lvlhsh_level_insert(njs_lvlhsh_query_t *lhq,
+ static njs_int_t njs_lvlhsh_bucket_insert(njs_lvlhsh_query_t *lhq,
+     void **slot, uint32_t key, njs_int_t nlvl);
+ static njs_int_t njs_lvlhsh_convert_bucket_to_level(njs_lvlhsh_query_t *lhq,
+-    void **slot, njs_uint_t nlvl, uint32_t *bucket);
++    void **slot, njs_uint_t nlvl, njs_ptr_t *bucket);
+ static njs_int_t njs_lvlhsh_level_convertion_insert(njs_lvlhsh_query_t *lhq,
+     void **parent, uint32_t key, njs_uint_t nlvl);
+ static njs_int_t njs_lvlhsh_bucket_convertion_insert(njs_lvlhsh_query_t *lhq,
+@@ -219,7 +194,7 @@ static njs_int_t
+ njs_lvlhsh_bucket_find(njs_lvlhsh_query_t *lhq, void **bkt)
+ {
+     void        *value;
+-    uint32_t    *bucket, *e;
++    njs_ptr_t   *bucket, *e;
+     njs_uint_t  n;
+ 
+     do {
+@@ -278,7 +253,7 @@ njs_lvlhsh_insert(njs_lvlhsh_t *lh, njs_lvlhsh_query_t *lhq)
+ static njs_int_t
+ njs_lvlhsh_new_bucket(njs_lvlhsh_query_t *lhq, void **slot)
+ {
+-    uint32_t  *bucket;
++    njs_ptr_t  *bucket;
+ 
+     bucket = lhq->proto->alloc(lhq->pool, njs_lvlhsh_bucket_size(lhq->proto));
+ 
+@@ -338,7 +313,7 @@ njs_lvlhsh_bucket_insert(njs_lvlhsh_query_t *lhq, void **slot, uint32_t key,
+     njs_int_t nlvl)
+ {
+     void                      **bkt, **vacant_bucket, *value;
+-    uint32_t                  *bucket, *e, *vacant_entry;
++    njs_ptr_t                 *bucket, *e, *vacant_entry;
+     njs_int_t                 ret;
+     uintptr_t                 n;
+     const void                *new_value;
+@@ -441,10 +416,11 @@ njs_lvlhsh_bucket_insert(njs_lvlhsh_query_t *lhq, void **slot, uint32_t key,
+ 
+ static njs_int_t
+ njs_lvlhsh_convert_bucket_to_level(njs_lvlhsh_query_t *lhq, void **slot,
+-    njs_uint_t nlvl, uint32_t *bucket)
++    njs_uint_t nlvl, njs_ptr_t *bucket)
+ {
+     void                      *lvl, **level;
+-    uint32_t                  *e, *end, key;
++    njs_ptr_t                 *e, *end;
++    uint32_t                  key;
+     njs_int_t                 ret;
+     njs_uint_t                i, shift, size;
+     njs_lvlhsh_query_t        q;
+@@ -542,7 +518,7 @@ njs_lvlhsh_bucket_convertion_insert(njs_lvlhsh_query_t *lhq, void **slot,
+     uint32_t key, njs_int_t nlvl)
+ {
+     void                      **bkt;
+-    uint32_t                  *bucket, *e;
++    njs_ptr_t                 *bucket, *e;
+     njs_int_t                 ret;
+     uintptr_t                 n;
+     const njs_lvlhsh_proto_t  *proto;
+@@ -681,7 +657,7 @@ njs_lvlhsh_bucket_delete(njs_lvlhsh_query_t *lhq, void **bkt)
+ {
+     void                      *value;
+     size_t                    size;
+-    uint32_t                  *bucket, *e;
++    njs_ptr_t                 *bucket, *e;
+     uintptr_t                 n;
+     const njs_lvlhsh_proto_t  *proto;
+ 
+@@ -825,8 +801,8 @@ njs_lvlhsh_level_each(njs_lvlhsh_each_t *lhe, void **level, njs_uint_t nlvl,
+ static void *
+ njs_lvlhsh_bucket_each(njs_lvlhsh_each_t *lhe)
+ {
+-    void      *value, **next;
+-    uint32_t  *bucket;
++    void       *value, **next;
++    njs_ptr_t  *bucket;
+ 
+     /* At least one valid entry must present here. */
+     do {
+diff --git a/src/njs_lvlhsh.h b/src/njs_lvlhsh.h
+index ab58de2d..151835b2 100644
+--- a/src/njs_lvlhsh.h
++++ b/src/njs_lvlhsh.h
+@@ -15,10 +15,18 @@ typedef void *(*njs_lvlhsh_alloc_t)(void *ctx, size_t size);
+ typedef void (*njs_lvlhsh_free_t)(void *ctx, void *p, size_t size);
+ 
+ 
+-#if (NJS_64BIT)
++#define NJS_LVLHSH_ENTRY_SIZE           2   /* two uintptr_t */
++
++#if (NJS_PTR_SIZE == 16)
++
++#define NJS_LVLHSH_DEFAULT_BUCKET_SIZE  256
++
++/* 4 is shift of 128-bit pointer. */
++#define NJS_LVLHSH_MEMALIGN_SHIFT       (NJS_MAX_MEMALIGN_SHIFT - 4)
++
++#elif (NJS_PTR_SIZE == 8)
+ 
+ #define NJS_LVLHSH_DEFAULT_BUCKET_SIZE  128
+-#define NJS_LVLHSH_ENTRY_SIZE           3
+ 
+ /* 3 is shift of 64-bit pointer. */
+ #define NJS_LVLHSH_MEMALIGN_SHIFT       (NJS_MAX_MEMALIGN_SHIFT - 3)
+@@ -26,7 +34,6 @@ typedef void (*njs_lvlhsh_free_t)(void *ctx, void *p, size_t size);
+ #else
+ 
+ #define NJS_LVLHSH_DEFAULT_BUCKET_SIZE  64
+-#define NJS_LVLHSH_ENTRY_SIZE           2
+ 
+ /* 2 is shift of 32-bit pointer. */
+ #define NJS_LVLHSH_MEMALIGN_SHIFT       (NJS_MAX_MEMALIGN_SHIFT - 2)
+@@ -43,7 +50,7 @@ typedef void (*njs_lvlhsh_free_t)(void *ctx, void *p, size_t size);
+ 
+ #define NJS_LVLHSH_BUCKET_END(bucket_size)                                    \
+     (((bucket_size) - sizeof(void *))                                         \
+-        / (NJS_LVLHSH_ENTRY_SIZE * sizeof(uint32_t))                          \
++        / (NJS_LVLHSH_ENTRY_SIZE * sizeof(uintptr_t))                         \
+      * NJS_LVLHSH_ENTRY_SIZE)
+ 
+ 
+@@ -157,7 +164,7 @@ typedef struct {
+      * bits, because entry positions are not aligned.  A current level is
+      * stored as key bit path from the root.
+      */
+-    uint32_t                  *bucket;
++    njs_ptr_t                 *bucket;
+     uint32_t                  current;
+     uint32_t                  entry;
+     uint32_t                  entries;
+diff --git a/src/njs_types.h b/src/njs_types.h
+index c38cb9dc..8641070b 100644
 --- a/src/njs_types.h
 +++ b/src/njs_types.h
-@@ -14,7 +14,11 @@
-
- #if (__LP64__)
- #define NJS_64BIT       1
-+#if defined(__CHERI__)
-+#define NJS_PTR_SIZE    16
-+#else
- #define NJS_PTR_SIZE    8
+@@ -25,8 +25,15 @@
+ #include <sys/types.h>
+ #include <stdint.h>
+ 
++#if __has_feature(capabilities)
++#include <cheri/cheric.h>
 +#endif
++
+ 
+-#if (__LP64__)
++#if defined(__CHERI_PURE_CAPABILITY__)
++#define NJS_64BIT       1
++#define NJS_PTR_SIZE    16
++#elif (__LP64__)
+ #define NJS_64BIT       1
+ #define NJS_PTR_SIZE    8
  #else
- #define NJS_64BIT       0
+@@ -34,6 +41,8 @@
  #define NJS_PTR_SIZE    4
+ #endif
+ 
++typedef uintptr_t       njs_ptr_t;
++
+ 
+ /*
+  * njs_int_t corresponds to the most efficient integer type, an architecture
+@@ -51,9 +60,9 @@ typedef int             njs_int_t;
+ typedef u_int           njs_uint_t;
+ 
+ #else
+-#define NJS_INT_T_SIZE  NJS_PTR_SIZE
+-typedef intptr_t        njs_int_t;
+-typedef uintptr_t       njs_uint_t;
++#define NJS_INT_T_SIZE  8
++typedef ssize_t         njs_int_t;
++typedef size_t          njs_uint_t;
+ #endif
+ 
+ 
+diff --git a/src/njs_vm.h b/src/njs_vm.h
+index 7d12b716..35296e0e 100644
+--- a/src/njs_vm.h
++++ b/src/njs_vm.h
+@@ -58,6 +58,19 @@ typedef enum {
+ 
+ #define NJS_SCOPES             (NJS_SCOPE_CLOSURE + NJS_MAX_NESTING)
+ 
++/*
++ * NJS_SCOPE_SHIFT encodes the number of low bits reserved for the scope type
++ * in a bytecode operand index.  It also doubles as the alignment guarantee
++ * for ABSOLUTE-scope detection: a raw pointer is ABSOLUTE iff its low
++ * NJS_SCOPE_SHIFT bits are all zero (pointers are at least 2^SHIFT aligned).
++ *
++ * On CHERI purecap sizeof(njs_value_t)==32, but njs_mp_align allocates with
++ * alignment==sizeof(njs_value_t)==32, so raw pointers have low 5 bits zero.
++ * NJS_SCOPE_SHIFT must stay 4 so that NJS_SCOPE_MASK covers only the 4-bit
++ * scope type and ABSOLUTE pointers (low 4 bits == 0) are still detected.
++ * The stride mismatch (NJS_INDEX_GLOBAL_OFFSET=16 < sizeof(njs_value_t)=32)
++ * is fixed separately by redefining NJS_INDEX_GLOBAL_OFFSET below.
++ */
+ #define NJS_SCOPE_SHIFT        4
+ #define NJS_SCOPE_MASK         ((uintptr_t) ((1 << NJS_SCOPE_SHIFT) - 1))
+ 
+@@ -155,17 +168,44 @@ enum njs_object_e {
+ 
+ 
+ #define NJS_INDEX_GLOBAL_RETVAL  njs_global_scope_index(1)
++
++/*
++ * CHERI: NJS_INDEX_GLOBAL_OFFSET is used as a byte offset into the global
++ * scope values buffer. With sizeof(njs_value_t)==32 (vs 16 on normal 64-bit),
++ * slot 1 is at byte offset 32, not 16. Override to sizeof(njs_value_t) so the
++ * memcpy in njs_vm_init and the scope_size calculation land on the right slot.
++ */
++#if defined(__CHERI_PURE_CAPABILITY__)
++#define NJS_INDEX_GLOBAL_OFFSET  ((njs_index_t) sizeof(njs_value_t))
++#else
+ #define NJS_INDEX_GLOBAL_OFFSET  njs_scope_index(1, 0)
++#endif
+ 
+ 
+ #define njs_scope_offset(index)                                               \
+     ((uintptr_t) (index) & ~NJS_SCOPE_MASK)
+ 
+ 
++/*
++ * CHERI: for NJS_SCOPE_ABSOLUTE the index IS the njs_value_t capability
++ * (njs_index_t = uintptr_t = __intcap carries the tag on purecap), so cast
++ * it directly back to a pointer. For all other scopes use base + offset as
++ * usual. The NULL+offset path that the original macro used for ABSOLUTE scope
++ * would take provenance from NULL, yielding an untagged capability.
++ */
++#if defined(__CHERI_PURE_CAPABILITY__)
++#define njs_vmcode_operand(vm, index)                                         \
++    ((((uintptr_t) (index) & NJS_SCOPE_MASK) == NJS_SCOPE_ABSOLUTE)           \
++     ? (njs_value_t *) (void *) (index)                                       \
++     : (njs_value_t *)                                                        \
++       ((u_char *) vm->scopes[(uintptr_t) (index) & NJS_SCOPE_MASK]           \
++        + njs_scope_offset(index)))
++#else
+ #define njs_vmcode_operand(vm, index)                                         \
+     ((njs_value_t *)                                                          \
+      ((u_char *) vm->scopes[(uintptr_t) (index) & NJS_SCOPE_MASK]             \
+       + njs_scope_offset(index)))
++#endif
+ 
+ 
+ struct njs_vm_s {

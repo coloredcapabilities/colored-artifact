@@ -1,0 +1,273 @@
+diff --git a/mjs.c b/mjs.c
+index 01a864f..9213b24 100644
+--- a/mjs.c
++++ b/mjs.c
+@@ -10984,6 +10984,35 @@ void *dlsym(void *handle, const char *name) {
+ /*
+  * Macros for marking reachable things: use bit 0.
+  */
++#if defined(__CHERI_PURE_CAPABILITY__)
++/*
++ * On CHERI purecap the first word of a gc_cell is a capability (the object's
++ * `properties`, a property's `next`, or a free-list link). The original macros
++ * stash the mark bit via `head.word |= 1`, an integer read-modify-write on the
++ * union alias, which CLEARS the capability's tag and turns the pointer into an
++ * unusable (untagged) value. Instead, set/clear the bit on the capability's
++ * *address* with CHERI intrinsics, which preserve the tag.
++ */
++#define MJS_GC_SETBIT(p, bit)                                              \
++  (((struct gc_cell *) (p))->head.link = __builtin_cheri_address_set(      \
++       ((struct gc_cell *) (p))->head.link,                                \
++       __builtin_cheri_address_get(((struct gc_cell *) (p))->head.link) |  \
++           (bit)))
++#define MJS_GC_CLRBIT(p, bit)                                              \
++  (((struct gc_cell *) (p))->head.link = __builtin_cheri_address_set(      \
++       ((struct gc_cell *) (p))->head.link,                                \
++       __builtin_cheri_address_get(((struct gc_cell *) (p))->head.link) &  \
++           ~(uintptr_t)(bit)))
++#define MJS_GC_TSTBIT(p, bit)                                              \
++  (__builtin_cheri_address_get(((struct gc_cell *) (p))->head.link) & (bit))
++
++#define MARK(p) MJS_GC_SETBIT(p, 1)
++#define UNMARK(p) MJS_GC_CLRBIT(p, 1)
++#define MARKED(p) MJS_GC_TSTBIT(p, 1)
++#define MARK_FREE(p) MJS_GC_SETBIT(p, 2)
++#define UNMARK_FREE(p) MJS_GC_CLRBIT(p, 2)
++#define MARKED_FREE(p) MJS_GC_TSTBIT(p, 2)
++#else
+ #define MARK(p) (((struct gc_cell *) (p))->head.word |= 1)
+ #define UNMARK(p) (((struct gc_cell *) (p))->head.word &= ~1)
+ #define MARKED(p) (((struct gc_cell *) (p))->head.word & 1)
+@@ -10996,6 +11025,7 @@ void *dlsym(void *handle, const char *name) {
+ #define MARK_FREE(p) (((struct gc_cell *) (p))->head.word |= 2)
+ #define UNMARK_FREE(p) (((struct gc_cell *) (p))->head.word &= ~2)
+ #define MARKED_FREE(p) (((struct gc_cell *) (p))->head.word & 2)
++#endif
+ 
+ /*
+  * When each arena has that or less free cells, GC will be scheduled
+@@ -11283,6 +11313,82 @@ static void gc_mark_object(struct mjs *mjs, mjs_val_t *v) {
+   /* gc_mark(mjs, mjs_get_proto(mjs, v)); */
+ }
+ 
++#if defined(__CHERI_PURE_CAPABILITY__)
++/*
++ * CHERI purecap port of mjs's string-GC pointer-reversal chain.
++ *
++ * gc_mark_string() stores the ADDRESS of each mjs_val_t slot that references an
++ * owned string into a chain, and gc_compact_strings() later rewrites those
++ * slots via `(mjs_val_t *)(uintptr_t)addr` — an integer->pointer cast that is
++ * untagged (unusable) on purecap. We remember the full capability of every slot
++ * as it is chained, and recover it during compaction. The table is valid for a
++ * single GC cycle (cleared at the top of mjs_gc); within one cycle every slot
++ * address is unique, so an address-keyed table is exact.
++ */
++#define MJS_SLOT_ADDR_MASK 0xFFFFFFFFFFFFUL
++static void **mjs_slottab = NULL;
++static size_t mjs_slottab_cap = 0;
++static size_t mjs_slottab_len = 0;
++
++static uint64_t mjs_slot_key(void *p) {
++  return (uint64_t) __builtin_cheri_address_get(p) & MJS_SLOT_ADDR_MASK;
++}
++
++static void mjs_slottab_place(void **tab, size_t cap, void *p) {
++  size_t mask = cap - 1;
++  uint64_t a = mjs_slot_key(p);
++  size_t i = (size_t)((a * 0x9E3779B97F4A7C15UL) >> 33) & mask;
++  while (tab[i] != NULL) {
++    if (mjs_slot_key(tab[i]) == a) {
++      tab[i] = p;
++      return;
++    }
++    i = (i + 1) & mask;
++  }
++  tab[i] = p;
++  mjs_slottab_len++;
++}
++
++static void mjs_slottab_register(void *p) {
++  if (!__builtin_cheri_tag_get(p)) return;
++  if (mjs_slottab_cap == 0 || (mjs_slottab_len + 1) * 2 >= mjs_slottab_cap) {
++    size_t ncap = mjs_slottab_cap ? mjs_slottab_cap * 2 : 4096;
++    void **ntab = (void **) calloc(ncap, sizeof(void *));
++    size_t i;
++    if (ntab == NULL) return;
++    mjs_slottab_len = 0;
++    for (i = 0; i < mjs_slottab_cap; i++) {
++      if (mjs_slottab[i] != NULL) mjs_slottab_place(ntab, ncap, mjs_slottab[i]);
++    }
++    free(mjs_slottab);
++    mjs_slottab = ntab;
++    mjs_slottab_cap = ncap;
++  }
++  mjs_slottab_place(mjs_slottab, mjs_slottab_cap, p);
++}
++
++static void *mjs_slottab_lookup(uint64_t a) {
++  a &= MJS_SLOT_ADDR_MASK;
++  if (mjs_slottab_cap != 0) {
++    size_t mask = mjs_slottab_cap - 1;
++    size_t i = (size_t)((a * 0x9E3779B97F4A7C15UL) >> 33) & mask;
++    while (mjs_slottab[i] != NULL) {
++      if (mjs_slot_key(mjs_slottab[i]) == a) return mjs_slottab[i];
++      i = (i + 1) & mask;
++    }
++  }
++  return (void *) (uintptr_t) a; /* not found: fall back (untagged) */
++}
++
++static void mjs_slottab_clear(void) {
++  if (mjs_slottab_cap) memset(mjs_slottab, 0, mjs_slottab_cap * sizeof(void *));
++  mjs_slottab_len = 0;
++}
++#define MJS_SLOT_PTR(h) mjs_slottab_lookup((uint64_t)(h))
++#else
++#define MJS_SLOT_PTR(h) ((void *) (uintptr_t) (h))
++#endif
++
+ /* Mark a string value */
+ static void gc_mark_string(struct mjs *mjs, mjs_val_t *v) {
+   mjs_val_t h, tmp = 0;
+@@ -11326,6 +11432,10 @@ static void gc_mark_string(struct mjs *mjs, mjs_val_t *v) {
+   }
+ 
+   h = (mjs_val_t)(uintptr_t) v;
++#if defined(__CHERI_PURE_CAPABILITY__)
++  /* Remember the slot's full capability so compaction can recover it. */
++  mjs_slottab_register(v);
++#endif
+   s[-1] = 1;
+   memcpy(s, &h, sizeof(h) - 2);
+   memcpy(v, &tmp, sizeof(tmp));
+@@ -11369,9 +11479,9 @@ void gc_compact_strings(struct mjs *mjs) {
+        */
+       for (; (h & MJS_TAG_MASK) != MJS_TAG_STRING_C; h = next) {
+         h &= ~MJS_TAG_MASK;
+-        memcpy(&next, (char *) (uintptr_t) h, sizeof(h));
++        memcpy(&next, (char *) MJS_SLOT_PTR(h), sizeof(h));
+ 
+-        *(mjs_val_t *) (uintptr_t) h = gc_string_val_from_offset(head);
++        *(mjs_val_t *) MJS_SLOT_PTR(h) = gc_string_val_from_offset(head);
+       }
+       h &= ~MJS_TAG_MASK;
+ 
+@@ -11452,6 +11562,10 @@ static void gc_mark_ffi_cbargs_list(struct mjs *mjs, ffi_cb_args_t *cbargs) {
+ 
+ /* Perform garbage collection */
+ void mjs_gc(struct mjs *mjs, int full) {
++#if defined(__CHERI_PURE_CAPABILITY__)
++  /* Fresh slot->capability table for this GC cycle (see gc_mark_string). */
++  mjs_slottab_clear();
++#endif
+   gc_mark_val_array(mjs, (mjs_val_t *) &mjs->vals,
+                     sizeof(mjs->vals) / sizeof(mjs_val_t));
+ 
+@@ -13492,12 +13606,88 @@ int mjs_is_boolean(mjs_val_t v) {
+ #define MJS_IS_POINTER_LEGIT(n) \
+   (((n) &MJS_TAG_MASK) == 0 || ((n) &MJS_TAG_MASK) == (~0 & MJS_TAG_MASK))
+ 
++#if defined(__CHERI_PURE_CAPABILITY__)
++/*
++ * CHERI purecap port of mjs's NaN-boxed pointers.
++ *
++ * A mjs_val_t is 64-bit and cannot hold a 128-bit capability, so mjs stored
++ * only the 48-bit address and rebuilt pointers with an integer->pointer cast
++ * (`(void*)(uintptr_t)addr`), which yields an UNTAGGED capability that faults
++ * on first dereference. We keep the 48-bit address in the value (all of mjs's
++ * address-based value semantics are unchanged) but remember the full
++ * capability in a side table keyed by address, and recover it in get_ptr().
++ */
++#define MJS_CAP_ADDR_MASK 0xFFFFFFFFFFFFUL
++static void **mjs_captab = NULL;
++static size_t mjs_captab_cap = 0; /* capacity, power of two */
++static size_t mjs_captab_len = 0;
++
++static size_t mjs_captab_hash(uint64_t a) {
++  a *= 0x9E3779B97F4A7C15UL;
++  return (size_t)(a >> 33);
++}
++
++static uint64_t mjs_cap_key(void *p) {
++  return (uint64_t) __builtin_cheri_address_get(p) & MJS_CAP_ADDR_MASK;
++}
++
++static void mjs_captab_place(void **tab, size_t cap, void *p) {
++  size_t mask = cap - 1;
++  uint64_t a = mjs_cap_key(p);
++  size_t i = mjs_captab_hash(a) & mask;
++  while (tab[i] != NULL) {
++    if (mjs_cap_key(tab[i]) == a) {
++      tab[i] = p; /* freshest capability wins for a reused address */
++      return;
++    }
++    i = (i + 1) & mask;
++  }
++  tab[i] = p;
++  mjs_captab_len++;
++}
++
++static void mjs_captab_register(void *p) {
++  if (!__builtin_cheri_tag_get(p) || mjs_cap_key(p) == 0) return;
++  if (mjs_captab_cap == 0 || (mjs_captab_len + 1) * 2 >= mjs_captab_cap) {
++    size_t ncap = mjs_captab_cap ? mjs_captab_cap * 2 : 2048;
++    void **ntab = (void **) calloc(ncap, sizeof(void *));
++    size_t i;
++    if (ntab == NULL) return; /* OOM: leave unregistered (will fault as before) */
++    mjs_captab_len = 0;
++    for (i = 0; i < mjs_captab_cap; i++) {
++      if (mjs_captab[i] != NULL) mjs_captab_place(ntab, ncap, mjs_captab[i]);
++    }
++    free(mjs_captab);
++    mjs_captab = ntab;
++    mjs_captab_cap = ncap;
++  }
++  mjs_captab_place(mjs_captab, mjs_captab_cap, p);
++}
++
++static void *mjs_captab_lookup(uint64_t a) {
++  a &= MJS_CAP_ADDR_MASK;
++  if (mjs_captab_cap != 0 && a != 0) {
++    size_t mask = mjs_captab_cap - 1;
++    size_t i = mjs_captab_hash(a) & mask;
++    while (mjs_captab[i] != NULL) {
++      if (mjs_cap_key(mjs_captab[i]) == a) return mjs_captab[i];
++      i = (i + 1) & mask;
++    }
++  }
++  /* Unknown address: fall back to the (untagged) reconstruction. */
++  return (void *) (uintptr_t) a;
++}
++#endif /* __CHERI_PURE_CAPABILITY__ */
++
+ MJS_PRIVATE mjs_val_t mjs_pointer_to_value(struct mjs *mjs, void *p) {
+   uint64_t n = ((uint64_t)(uintptr_t) p);
+ 
+   if (!MJS_IS_POINTER_LEGIT(n)) {
+     mjs_prepend_errorf(mjs, MJS_TYPE_ERROR, "invalid pointer value: %p", p);
+   }
++#if defined(__CHERI_PURE_CAPABILITY__)
++  mjs_captab_register(p);
++#endif
+   return n & ~MJS_TAG_MASK;
+ }
+ 
+@@ -13505,11 +13695,18 @@ MJS_PRIVATE mjs_val_t mjs_legit_pointer_to_value(void *p) {
+   uint64_t n = ((uint64_t)(uintptr_t) p);
+ 
+   assert(MJS_IS_POINTER_LEGIT(n));
++#if defined(__CHERI_PURE_CAPABILITY__)
++  mjs_captab_register(p);
++#endif
+   return n & ~MJS_TAG_MASK;
+ }
+ 
+ MJS_PRIVATE void *get_ptr(mjs_val_t v) {
++#if defined(__CHERI_PURE_CAPABILITY__)
++  return mjs_captab_lookup((uint64_t)(v & 0xFFFFFFFFFFFFUL));
++#else
+   return (void *) (uintptr_t)(v & 0xFFFFFFFFFFFFUL);
++#endif
+ }
+ 
+ void *mjs_get_ptr(struct mjs *mjs, mjs_val_t v) {

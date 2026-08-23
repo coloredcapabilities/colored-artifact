@@ -37,9 +37,19 @@ fi
 cd "${SCRIPT_DIR}/njs"
 mkdir -p build
 
-# Patch njs_types.h for CHERI 16-byte pointers
-if ! grep -q "__CHERI__" src/njs_types.h; then
-    sed -i 's/#define NJS_PTR_SIZE    8/#if defined(__CHERI__)\n#define NJS_PTR_SIZE    16\n#else\n#define NJS_PTR_SIZE    8\n#endif/' src/njs_types.h
+# Apply full CHERI-purecap port patch (backport of CTSRD-CHERI/njs cc308a77 +
+# additional fixes discovered during validation):
+#   - njs_types.h: NJS_PTR_SIZE=16, njs_ptr_t, njs_int_t->ssize_t
+#   - njs_lvlhsh: store whole uintptr_t entries (fix pointer-splitting)
+#   - njs.h: njs_opaque_value_t 32 bytes, njs_argument uses sizeof
+#   - njs_clang.h: align_ptr/trunc_ptr provenance fix
+#   - njs_vm.h: NJS_INDEX_GLOBAL_OFFSET=sizeof(njs_value_t) for 32-byte slots,
+#               njs_vmcode_operand ABSOLUTE-scope capability cast,
+#               NJS_SCOPE_SHIFT comment clarification
+# Idempotent: njs_ptr_t only exists once the patch is applied.
+if ! grep -q "njs_ptr_t" src/njs_types.h; then
+    git apply "${SCRIPT_DIR}/cheri-compat.patch" \
+        || patch -p1 < "${SCRIPT_DIR}/cheri-compat.patch"
 fi
 
 # Create readline compat shim for CheriBSD libedit
